@@ -1,6 +1,10 @@
 #include <windows.h>
 #include "glad/glad.h"
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 typedef float f32;
 typedef unsigned int u32;
 typedef int s32;
@@ -327,24 +331,28 @@ int main() {
 	HWND window = Win32CreateWindow(Instance, width, height);
 
 	if(window) {
+		std::cout << "Window created." << std::endl;
+		
 		HDC hdc = GetDC(window);
 		HGLRC OpenGLContext = Win32InitializeOpenGLContext(hdc);
 
 		if(OpenGLContext) {
+			std::cout << "OpenGL context created." << std::endl;
+			
 			wglMakeCurrent(hdc, OpenGLContext);
 
 			if(gladLoadGL()) {
-				std::cout << "GLAD loaded" << std::endl;
+				std::cout << "GLAD loaded." << std::endl;
 
 				glViewport(0, 0, width, height);
 
 				f32 target_rectangle_vertex_data[] = {
-					-0.5f, -0.5f,  0.0f,  0.0f,  0.0f,
-					 0.5f,  0.5f,  0.0f,  1.0f,  1.0f,
-					-0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
-					-0.5f, -0.5f,  0.0f,  0.0f,  0.0f,
-					 0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
-					 0.5f,  0.5f,  0.0f,  1.0f,  1.0f,
+					-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
+					 1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
+					-1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+					-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
+					 1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
+					 1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
 				};
 									
 				u32 target_rect_vbo;

@@ -16,11 +16,8 @@ set COMPILER_OPTIONS=%DEFINES%               ^
 					 
 set INCLUDE_DIRS=include
 
-rem audioses.lib
-rem mmdevapi.lib
 set LIBRARIES=gdi32.lib user32.lib opengl32.lib
 
-rem model.cpp ^
 set C_AND_CPP_FILES=main.cpp glad.c
 
 cl %COMPILER_OPTIONS% %C_AND_CPP_FILES% /I %INCLUDE_DIRS% /link %LIBRARIES%
