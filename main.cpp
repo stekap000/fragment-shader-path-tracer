@@ -14,17 +14,17 @@ typedef int s32;
 #define __ignore__(x)((void)(x))
 #define Internal static
 
-bool GlobalEngineRunning = true;
+bool global_engine_running = true;
 
-Internal LRESULT CALLBACK Win32MainWindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam) {
-	LRESULT Result = 0;
+Internal LRESULT CALLBACK win32_main_window_callback(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+	LRESULT result = 0;
 
-	switch(Message) {
+	switch(message) {
 		case WM_CLOSE: {
-			GlobalEngineRunning = false;
+			global_engine_running = false;
 		} break;
 		case WM_DESTROY: {
-			GlobalEngineRunning = false;
+			global_engine_running = false;
 		} break;
 		case WM_LBUTTONDOWN: {
 
@@ -48,73 +48,73 @@ Internal LRESULT CALLBACK Win32MainWindowCallback(HWND Window, UINT Message, WPA
 			
 		} break;
 		case WM_PAINT: {
-			PAINTSTRUCT Paint = {};
-			HDC WindowDC = BeginPaint(Window, &Paint);
-			__ignore__(WindowDC);
-			EndPaint(Window, &Paint);
+			PAINTSTRUCT paint = {};
+			HDC window_dc = BeginPaint(window, &paint);
+			__ignore__(window_dc);
+			EndPaint(window, &paint);
 		} break;
 		default: {
-			Result = DefWindowProcW(Window, Message, WParam, LParam);
+			result = DefWindowProcW(window, message, wparam, lparam);
 		}
 	}
 
-	return Result;
+	return result;
 }
 
-Internal HWND Win32CreateWindow(HINSTANCE Instance, int width, int height) {
-	WNDCLASSEXW WindowClass = {};
+Internal HWND win32_create_window(HINSTANCE instance, int width, int height) {
+	WNDCLASSEXW window_class = {};
 
-	WindowClass.cbSize			= sizeof(WindowClass);
-	WindowClass.style			= CS_HREDRAW | CS_VREDRAW | CS_OWNDC | CS_DBLCLKS;
-	WindowClass.lpfnWndProc		= Win32MainWindowCallback;
-	WindowClass.hInstance		= Instance;
-	WindowClass.hCursor			= 0;
-	WindowClass.lpszClassName	= L"EngineWindowClass";
+	window_class.cbSize			= sizeof(window_class);
+	window_class.style			= CS_HREDRAW | CS_VREDRAW | CS_OWNDC | CS_DBLCLKS;
+	window_class.lpfnWndProc	= win32_main_window_callback;
+	window_class.hInstance		= instance;
+	window_class.hCursor		= 0;
+	window_class.lpszClassName	= L"ComputeShaderplaygroundWindowClass";
 
-	HWND Window = 0;
+	HWND window = 0;
 	
-	if(RegisterClassExW(&WindowClass)) {
-		DWORD WindowStyle = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
-		RECT WindowRect = {};
-		WindowRect.left = 0;
-		WindowRect.right = width;
-		WindowRect.top = 0;
-		WindowRect.bottom = height;
+	if(RegisterClassExW(&window_class)) {
+		DWORD window_style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+		RECT window_rect = {};
+		window_rect.left = 0;
+		window_rect.right = width;
+		window_rect.top = 0;
+		window_rect.bottom = height;
 		
-		AdjustWindowRect(&WindowRect, WindowStyle, FALSE);
+		AdjustWindowRect(&window_rect, window_style, FALSE);
 		
-		Window = CreateWindowExW(0, WindowClass.lpszClassName, L"ComputeShaderPlayground",
-								 WindowStyle,
+		window = CreateWindowExW(0, window_class.lpszClassName, L"ComputeShaderPlayground",
+								 window_style,
 								 CW_USEDEFAULT,
 								 CW_USEDEFAULT,
-								 (WindowRect.right - WindowRect.left),
-								 (WindowRect.bottom - WindowRect.top),
-								 0, 0, Instance, 0);
+								 (window_rect.right - window_rect.left),
+								 (window_rect.bottom - window_rect.top),
+								 0, 0, instance, 0);
 	}
 
-	return Window;
+	return window;
 }
 
-Internal HGLRC Win32InitializeOpenGLContext(HDC WindowDC) {
-	HGLRC OpenGLContext = 0;
+Internal HGLRC win32_initialize_opengl_context(HDC window_dc) {
+	HGLRC opengl_context = 0;
 
-	PIXELFORMATDESCRIPTOR PixelFormatDescriptor = {};
-	PixelFormatDescriptor.nSize					= sizeof(PixelFormatDescriptor);
-	PixelFormatDescriptor.nVersion				= 1;
-	PixelFormatDescriptor.dwFlags				= PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-	PixelFormatDescriptor.iPixelType			= PFD_TYPE_RGBA;
+	PIXELFORMATDESCRIPTOR pixel_format_descriptor = {};
+	pixel_format_descriptor.nSize				= sizeof(pixel_format_descriptor);
+	pixel_format_descriptor.nVersion			= 1;
+	pixel_format_descriptor.dwFlags				= PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	pixel_format_descriptor.iPixelType			= PFD_TYPE_RGBA;
 	// NOTE(stekap): Seems like this should be 32 for RGBA and documentation is wrong.
-	PixelFormatDescriptor.cColorBits			= 32;
-	PixelFormatDescriptor.cAlphaBits			= 8;
-	PixelFormatDescriptor.cDepthBits			= 24;
-	PixelFormatDescriptor.cStencilBits		    = 8;
+	pixel_format_descriptor.cColorBits			= 32;
+	pixel_format_descriptor.cAlphaBits			= 8;
+	pixel_format_descriptor.cDepthBits			= 24;
+	pixel_format_descriptor.cStencilBits	    = 8;
 
-	int PixelFormat = ChoosePixelFormat(WindowDC, &PixelFormatDescriptor);
-	DescribePixelFormat(WindowDC, PixelFormat, sizeof(PixelFormatDescriptor), &PixelFormatDescriptor);
+	int pixel_format = ChoosePixelFormat(window_dc, &pixel_format_descriptor);
+	DescribePixelFormat(window_dc, pixel_format, sizeof(pixel_format_descriptor), &pixel_format_descriptor);
 
-	if(PixelFormat) {
-		if(SetPixelFormat(WindowDC, PixelFormat, &PixelFormatDescriptor)) {
-			OpenGLContext = wglCreateContext(WindowDC);
+	if(pixel_format) {
+		if(SetPixelFormat(window_dc, pixel_format, &pixel_format_descriptor)) {
+			opengl_context = wglCreateContext(window_dc);
 		}
 		else {
 			std::cout << "Pixel format could not be set (needed for creation of OpenGL context)." << std::endl;
@@ -124,24 +124,21 @@ Internal HGLRC Win32InitializeOpenGLContext(HDC WindowDC) {
 		std::cout << "Could not find pixel format that matches provided description." << std::endl;
 	}
 
-	return OpenGLContext;
+	return opengl_context;
 }
 
-Internal void Win32HandleWindowMessages(HWND Window) {
-	MSG Message = {};
+Internal void win32_handle_window_messages(HWND window) {
+	MSG message = {};
 	
-	while(PeekMessageW(&Message, Window, 0, 0, PM_REMOVE)) {
-		switch(Message.message) {
+	while(PeekMessageW(&message, window, 0, 0, PM_REMOVE)) {
+		switch(message.message) {
 			case WM_KEYDOWN:
 			case WM_KEYUP:
 			case WM_SYSKEYDOWN:
 			case WM_SYSKEYUP: {
-				unsigned long long VirtualKeyCode = Message.wParam;
-				unsigned char KeyWasDown = (Message.lParam & (1 << 30)) != 0;
-				unsigned char KeyIsDown = (Message.lParam & (1 << 31)) == 0;
-
-				// TODO(stekap): Later handle both on press and on release, as well as hold, in a more
-				//               structured way.
+				unsigned long long virtual_key_code = message.wParam;
+				unsigned char key_was_down = (message.lParam & (1 << 30)) != 0;
+				unsigned char key_is_down = (message.lParam & (1 << 31)) == 0;
 
 				// NOTE(stekap): When button is pressed and held, windows will generate one message
 				//               and then insert a small delay during which there will be no messages
@@ -160,15 +157,15 @@ Internal void Win32HandleWindowMessages(HWND Window) {
 
 				// NOTE(stekap): This detects button press and release ie. end states when button
 				//               is held down.
-				if(KeyWasDown != KeyIsDown) {
+				if(key_was_down != key_is_down) {
 					
 				}
 
 				// NOTE(stekap): This is on press.
-				if(KeyIsDown && !KeyWasDown) {
-					switch(VirtualKeyCode) {
+				if(key_is_down && !key_was_down) {
+					switch(virtual_key_code) {
 						case VK_ESCAPE: {
-							GlobalEngineRunning = false;
+							global_engine_running = false;
 						} break;
 						case 'O': {
 							
@@ -183,8 +180,8 @@ Internal void Win32HandleWindowMessages(HWND Window) {
 				}
 			} break;
 			default: {
-				TranslateMessage(&Message);
-				DispatchMessage(&Message);
+				TranslateMessage(&message);
+				DispatchMessage(&message);
 			}
 		}
 	}
@@ -213,7 +210,7 @@ Internal char* read_entire_text_file(const char* filename) {
 	return data;
 }
 
-u32 create_shader_program (const char* vertex_shader_path, const char* fragment_shader_path) {
+u32 create_shader_program(const char* vertex_shader_path, const char* fragment_shader_path) {
 	u32 id = 0;
 		
 	char* vertex_shader_source = read_entire_text_file(vertex_shader_path);
@@ -317,29 +314,29 @@ Internal void use_shader_program(u32 id) {
 }
 
 #if !defined(ATTACH_CONSOLE)
-int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, LPSTR CommandLine, int ShowCode) {
-	__ignore__(PreviousInstance);
-	__ignore__(CommandLine);
-	__ignore__(ShowCode);
+int CALLBACK WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_code) {
+	__ignore__(previous_instance);
+	__ignore__(command_line);
+	__ignore__(show_code);
 #else
 int main() {	
-	HINSTANCE Instance = (HINSTANCE)GetModuleHandle(0);
+	HINSTANCE instance = (HINSTANCE)GetModuleHandle(0);
 #endif
 
 	int width = 400;
 	int height = 400;
-	HWND window = Win32CreateWindow(Instance, width, height);
+	HWND window = win32_create_window(instance, width, height);
 
 	if(window) {
 		std::cout << "Window created." << std::endl;
 		
 		HDC hdc = GetDC(window);
-		HGLRC OpenGLContext = Win32InitializeOpenGLContext(hdc);
+		HGLRC opengl_context = win32_initialize_opengl_context(hdc);
 
-		if(OpenGLContext) {
+		if(opengl_context) {
 			std::cout << "OpenGL context created." << std::endl;
 			
-			wglMakeCurrent(hdc, OpenGLContext);
+			wglMakeCurrent(hdc, opengl_context);
 
 			if(gladLoadGL()) {
 				std::cout << "GLAD loaded." << std::endl;
@@ -369,7 +366,7 @@ int main() {
 				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(0));
 				glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(3*sizeof(f32)));
 
-				const u32 TEXTURE_WIDTH = 400, TEXTURE_HEIGHT = 400;
+				const u32 texture_width = 400, texture_height = 400;
 				u32 texture;
 				glGenTextures(1, &texture);
 				glActiveTexture(GL_TEXTURE0);
@@ -378,7 +375,7 @@ int main() {
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, TEXTURE_WIDTH, TEXTURE_HEIGHT, 0, GL_RGBA, 
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, texture_width, texture_height, 0, GL_RGBA, 
 							 GL_FLOAT, NULL);
 				glBindImageTexture(0, texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 				
@@ -388,14 +385,14 @@ int main() {
 				
 				u32 compute_shader = create_compute_shader_program("shaders/compute_shader.comp");
 				
-				while(GlobalEngineRunning) {
-					Win32HandleWindowMessages(window);
+				while(global_engine_running) {
+					win32_handle_window_messages(window);
 					
 					glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 					glClear(GL_COLOR_BUFFER_BIT);
 					
 					use_shader_program(compute_shader);
-					glDispatchCompute((u32)TEXTURE_WIDTH, (u32)TEXTURE_HEIGHT, 1);
+					glDispatchCompute((u32)texture_width, (u32)texture_height, 1);
 					glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 					use_shader_program(base_shader_program);
