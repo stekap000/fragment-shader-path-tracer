@@ -382,11 +382,11 @@ int main() {
 							 GL_FLOAT, NULL);
 				glBindImageTexture(0, texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 				
-				u32 base_shader_program = create_shader_program("base.vert", "base.frag");
+				u32 base_shader_program = create_shader_program("shaders/base.vert", "shaders/base.frag");
 				use_shader_program(base_shader_program);
 				glUniform1i(glGetUniformLocation(base_shader_program, "sampler"), 0);
 				
-				u32 compute_shader = create_compute_shader_program("compute_shader.comp");
+				u32 compute_shader = create_compute_shader_program("shaders/compute_shader.comp");
 				
 				while(GlobalEngineRunning) {
 					Win32HandleWindowMessages(window);
