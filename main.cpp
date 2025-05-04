@@ -5,14 +5,18 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-typedef float f32;
-typedef unsigned int u32;
-typedef int s32;
-
 #include <iostream>
+#include <string>
 
 #define __ignore__(x)((void)(x))
 #define Internal static
+
+typedef unsigned int u32;
+typedef unsigned long long int u64;
+typedef int s32;
+typedef long long int s64;
+typedef float f32;
+typedef double f64;
 
 bool global_engine_running = true;
 
@@ -313,6 +317,23 @@ Internal void use_shader_program(u32 id) {
 	glUseProgram(id);
 }
 
+struct Time {
+	LARGE_INTEGER last_ticks;
+	LARGE_INTEGER end_ticks;
+	LARGE_INTEGER ticks_frequency;
+	u64 frame_ticks = 0;
+	f64 frame_time = 0;
+	f64 elapsed_seconds = 0;
+
+	void update_time_at_frame_end() {
+		QueryPerformanceCounter(&end_ticks);
+		frame_ticks = (end_ticks.QuadPart - last_ticks.QuadPart);
+		frame_time = ((f64)frame_ticks / (f64)ticks_frequency.QuadPart);
+		elapsed_seconds += frame_time;
+		last_ticks = end_ticks;
+	}
+};
+
 #if !defined(ATTACH_CONSOLE)
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_code) {
 	__ignore__(previous_instance);
@@ -322,6 +343,9 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR comm
 int main() {	
 	HINSTANCE instance = (HINSTANCE)GetModuleHandle(0);
 #endif
+
+	Time time = {};
+	QueryPerformanceFrequency(&time.ticks_frequency);
 
 	int width = 400;
 	int height = 400;
@@ -384,7 +408,8 @@ int main() {
 				glUniform1i(glGetUniformLocation(base_shader_program, "sampler"), 0);
 				
 				u32 compute_shader = create_compute_shader_program("shaders/compute_shader.comp");
-				
+
+				QueryPerformanceCounter(&time.last_ticks);
 				while(global_engine_running) {
 					win32_handle_window_messages(window);
 					
@@ -399,6 +424,9 @@ int main() {
 					glDrawArrays(GL_TRIANGLES, 0, 6);
 
 					SwapBuffers(hdc);
+
+					time.update_time_at_frame_end();
+					SetWindowText(window, std::to_string(time.frame_time).c_str());
 				}
 			}
 			else {
