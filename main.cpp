@@ -334,6 +334,47 @@ struct Time {
 	}
 };
 
+struct ComputeGroupLimits {
+	s32 count_x = 0;
+	s32 count_y = 0;
+	s32 count_z = 0;
+
+	s32 size_x = 0;
+	s32 size_y = 0;
+	s32 size_z = 0;
+
+	s32 local_invocations_count = 0;
+	s32 shared_memory_size_in_bytes = 0;
+
+	ComputeGroupLimits() {
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0, &count_x);
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1, &count_y);
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 2, &count_z);
+
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &size_x);
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1, &size_y);
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2, &size_z);
+
+		glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &local_invocations_count);
+		glGetIntegerv(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE, &shared_memory_size_in_bytes);
+	}
+
+	void print() {
+		std::cout << "WORK GROUP MAX COUNTS:" << std::endl;
+		std::cout << "\tx: " << count_x << std::endl;
+		std::cout << "\ty: " << count_y << std::endl;
+		std::cout << "\tz: " << count_z << std::endl;
+
+		std::cout << "WORK GROUP MAX SIZES:" << std::endl;
+		std::cout << "\tx: " << size_x << std::endl;
+		std::cout << "\ty: " << size_y << std::endl;
+		std::cout << "\tz: " << size_z << std::endl;
+
+		std::cout << "WORK GROUP MAX LOCAL INVOCATIONS COUNT: " << local_invocations_count << std::endl;
+		std::cout << "WORK GROUP MAX SHARED MEMORY SIZE (IN BYTES): " << shared_memory_size_in_bytes << std::endl;
+	}
+};
+
 #if !defined(ATTACH_CONSOLE)
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_code) {
 	__ignore__(previous_instance);
@@ -390,24 +431,34 @@ int main() {
 				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(0));
 				glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(3*sizeof(f32)));
 
+				ComputeGroupLimits compute_group_limits;
+				compute_group_limits.print();
+				
 				const u32 texture_width = 400, texture_height = 400;
 				u32 texture;
 				glGenTextures(1, &texture);
 				glActiveTexture(GL_TEXTURE0);
+				// Texture 'texture' is bound to GL_TEXTURE0 texture slot.
 				glBindTexture(GL_TEXTURE_2D, texture);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, texture_width, texture_height, 0, GL_RGBA, 
-							 GL_FLOAT, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, texture_width, texture_height, 0, GL_RGBA, GL_FLOAT, NULL);
+				// Same texture 'texture' is bound to image slot 0 (doesn't need to match texture slot number).
+				// Since the actual texture data is the same, and is bound to both texture and image slots, if it is
+				// modified by a compute shader, then the changes will also be seen in the main pipeline when the data
+				// is accessed by a sampler.
 				glBindImageTexture(0, texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 				
 				u32 base_shader_program = create_shader_program("shaders/base.vert", "shaders/base.frag");
-				use_shader_program(base_shader_program);
-				glUniform1i(glGetUniformLocation(base_shader_program, "sampler"), 0);
-				
 				u32 compute_shader = create_compute_shader_program("shaders/compute_shader.comp");
+				
+				// We can also set uniforms externally (currently, they are set internally in shaders).
+				// use_shader_program(base_shader_program);
+				// glUniform1i(glGetUniformLocation(base_shader_program, "sampler"), 0);
+				// use_shader_program(compute_shader);
+				// glUniform1i(glGetUniformLocation(compute_shader, "image_output"), 0);
 
 				QueryPerformanceCounter(&time.last_ticks);
 				while(global_engine_running) {
