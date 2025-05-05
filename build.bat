@@ -15,10 +15,10 @@ set COMPILER_OPTIONS=%DEFINES%               ^
 					 %DISABLE_SOME_WARNINGS%
 					 
 set INCLUDE_DIRS=include
+set LIBRARY_DIRS=lib
 
-set LIBRARIES=gdi32.lib user32.lib opengl32.lib
+set LIBRARIES=gdi32.lib user32.lib opengl32.lib shell32.lib glfw3_mt_windows.lib
 
 set C_AND_CPP_FILES=main.cpp glad.c
 
-cl %COMPILER_OPTIONS% %C_AND_CPP_FILES% /I %INCLUDE_DIRS% /link %LIBRARIES%
-
+cl %COMPILER_OPTIONS% %C_AND_CPP_FILES% /I %INCLUDE_DIRS% /link /LIBPATH:%LIBRARY_DIRS% %LIBRARIES%
