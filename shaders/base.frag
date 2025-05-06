@@ -1,12 +1,11 @@
-#version 430 core
+#version 420 core
 
-in vec2 texture_coords;
+in vec3 position;
 
 out vec4 fragment_color;
 
-layout (binding = 0) uniform sampler2D sampler;
+uniform float time;
 
 void main() {
-	vec3 texel_color = texture(sampler, texture_coords).rgb;
-	fragment_color = vec4(texel_color, 1.0);
+	fragment_color = vec4(0.0, 1 - pow(sin(15*position.x - 3*time) - 15*position.y, 2), 0.0, 1.0);
 }
