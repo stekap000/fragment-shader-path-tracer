@@ -106,14 +106,33 @@ Internal void use_shader_program(u32 id) {
 	glUseProgram(id);
 }
 
+struct V3 {
+	f32 x;
+	f32 y;
+	f32 z;
+};
+
+struct Camera {
+	V3 p;
+	V3 x;
+	V3 y;
+	V3 z;
+	float f;
+};
+
+struct Sphere {
+	V3 p;
+	f32 r;
+};
+
 int main() {
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	int width = 400;
-	int height = 400;
+	int width = 800;
+	int height = 640;
 	GLFWwindow* window = glfwCreateWindow(width, height, "ComputeShaderPlayground", NULL, NULL);
 	
 	if (!window)
@@ -154,6 +173,27 @@ int main() {
 				
 	u32 base_shader_program = create_shader_program("shaders/base.vert", "shaders/base.frag");
 	s32 time_uniform_location = glGetUniformLocation(base_shader_program, "time");
+
+	Camera camera = {{0.0f, 0.0f, 0.0f},
+					 {1.0f, 0.0f, 0.0f},
+					 {0.0f, 1.0f, 0.0f},
+					 {0.0f, 0.0f, 1.0f},
+					 1.0f};
+
+	Sphere sphere = {{0.0f, 0.0f, -2.0f}, 1.0f};
+
+	use_shader_program(base_shader_program);
+	glUniform1f(glGetUniformLocation(base_shader_program, "width"), (f32)width);
+	glUniform1f(glGetUniformLocation(base_shader_program, "height"), (f32)height);
+
+	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
+	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
+	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
+	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
+	glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
+
+	glUniform3fv(glGetUniformLocation(base_shader_program, "sphere0.p"), 1, (f32*)&sphere.p);
+	glUniform1f(glGetUniformLocation(base_shader_program, "sphere0.r"), sphere.r);
 	
 	glfwGetTime();
 	while(!glfwWindowShouldClose(window))
