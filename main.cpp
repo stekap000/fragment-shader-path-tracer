@@ -106,24 +106,28 @@ Internal void use_shader_program(u32 id) {
 	glUseProgram(id);
 }
 
-struct V3 {
-	f32 x;
-	f32 y;
-	f32 z;
-};
+struct V3 { f32 x, y, z; };
+struct V4 { f32 x, y, z, w; };
 
 struct Camera {
-	V3 p;
-	V3 x;
-	V3 y;
-	V3 z;
+	V3 p, x, y, z;
 	float f;
 };
 
 struct Sphere {
 	V3 p;
-	f32 r;
+	float r;
+	V4 color;
 };
+
+u32 create_uniform_buffer(u64 size_in_bytes) {
+	u32 uniform_buffer;
+	glGenBuffers(1, &uniform_buffer);
+	glBindBuffer(GL_UNIFORM_BUFFER, uniform_buffer);
+	glBufferData(GL_UNIFORM_BUFFER, size_in_bytes, 0, GL_STATIC_DRAW);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	return uniform_buffer;
+}
 
 int main() {
 	glfwInit();
@@ -173,6 +177,26 @@ int main() {
 				
 	u32 base_shader_program = create_shader_program("shaders/base.vert", "shaders/base.frag");
 	s32 time_uniform_location = glGetUniformLocation(base_shader_program, "time");
+	
+	// NOTE(stekap): Caution when ordering data in uniform buffer because of shader alignment
+	//               struct members and the whole struct itself.
+
+	// NOTE(stekap): Binding is set explicitly in the shader for uniform block "Spheres" (we could also do it here).
+	const u32 uniform_buffer_bind_index = 0;
+	const u32 max_sphere_count = 16;
+	const u32 sphere_count = 2;
+	Sphere spheres[max_sphere_count] = {
+		{{0.0f, 0.0f, -2.0f}, 1.0f, {1.0f, 0.0f, 0.0f, 1.0f}},
+		{{0.0f, -1000.0f, 0.0f} , 999.0f, {0.0f, 1.0f, 0.0f, 1.0f}}
+	};
+	
+	u32 scene_uniform_buffer = create_uniform_buffer(sizeof(spheres));
+	glBindBufferRange(GL_UNIFORM_BUFFER, uniform_buffer_bind_index, scene_uniform_buffer, 0, sizeof(spheres));
+	
+	glBindBuffer(GL_UNIFORM_BUFFER, scene_uniform_buffer);
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, sphere_count*sizeof(Sphere), &spheres[0]);
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, sphere_count*sizeof(Sphere), &spheres[0]);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 	Camera camera = {{0.0f, 0.0f, 0.0f},
 					 {1.0f, 0.0f, 0.0f},
@@ -180,20 +204,16 @@ int main() {
 					 {0.0f, 0.0f, 1.0f},
 					 1.0f};
 
-	Sphere sphere = {{0.0f, 0.0f, -2.0f}, 1.0f};
-
 	use_shader_program(base_shader_program);
 	glUniform1f(glGetUniformLocation(base_shader_program, "width"), (f32)width);
 	glUniform1f(glGetUniformLocation(base_shader_program, "height"), (f32)height);
+	glUniform1f(glGetUniformLocation(base_shader_program, "sphere_count"), sphere_count);
 
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
 	glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
-
-	glUniform3fv(glGetUniformLocation(base_shader_program, "sphere0.p"), 1, (f32*)&sphere.p);
-	glUniform1f(glGetUniformLocation(base_shader_program, "sphere0.r"), sphere.r);
 	
 	glfwGetTime();
 	while(!glfwWindowShouldClose(window))
