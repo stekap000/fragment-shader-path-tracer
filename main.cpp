@@ -6,6 +6,7 @@
 // #include <glm/gtc/type_ptr.hpp>
 
 #include <iostream>
+#include <string>
 
 #define __ignore__(x)((void)(x))
 #define Internal static
@@ -187,7 +188,7 @@ int main() {
 	const u32 sphere_count = 2;
 	Sphere spheres[max_sphere_count] = {
 		{{0.0f, 0.0f, -2.0f}, 1.0f, {1.0f, 0.0f, 0.0f, 1.0f}},
-		{{0.0f, -1000.0f, 0.0f} , 999.0f, {0.0f, 1.0f, 0.0f, 1.0f}}
+		{{0.0f, -1000.0f, -2.0f} , 1000.0f, {0.0f, 1.0f, 0.0f, 1.0f}}
 	};
 	
 	u32 scene_uniform_buffer = create_uniform_buffer(sizeof(spheres));
@@ -198,7 +199,7 @@ int main() {
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sphere_count*sizeof(Sphere), &spheres[0]);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-	Camera camera = {{0.0f, 0.0f, 0.0f},
+	Camera camera = {{0.0f, 1.0f, 1.0f},
 					 {1.0f, 0.0f, 0.0f},
 					 {0.0f, 1.0f, 0.0f},
 					 {0.0f, 0.0f, 1.0f},
@@ -207,15 +208,19 @@ int main() {
 	use_shader_program(base_shader_program);
 	glUniform1f(glGetUniformLocation(base_shader_program, "width"), (f32)width);
 	glUniform1f(glGetUniformLocation(base_shader_program, "height"), (f32)height);
-	glUniform1f(glGetUniformLocation(base_shader_program, "sphere_count"), sphere_count);
+	glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"), sphere_count);
 
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
 	glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
+
+	double time_start;
+	double time_end;
 	
-	glfwGetTime();
+	time_start = glfwGetTime();
+	
 	while(!glfwWindowShouldClose(window))
 	{
 		if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
@@ -231,7 +236,11 @@ int main() {
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		
 		glfwSwapBuffers(window);
-		glfwPollEvents();    
+		glfwPollEvents();
+
+		time_end = glfwGetTime();
+		glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
+		time_start = time_end;
 	}
 
 	glfwTerminate();

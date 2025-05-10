@@ -3,6 +3,10 @@
 // NOTE(stekap): Caution when ordering data in uniform buffer because of shader alignment
 //               struct members and the whole struct itself.
 
+#define BIAS 0.0001
+#define MAX_FLOAT 3.40282347e+38f
+#define MAX_SPHERE_COUNT 16
+
 struct Sphere {
 	vec3 p;
 	float r;
@@ -34,20 +38,33 @@ uniform unsigned int sphere_count;
 
 uniform Camera camera;
 
-#define bias 0.001
-#define max_sphere_count 16
-
 layout (std140, binding = 0) uniform Scene {
-	Sphere spheres[max_sphere_count];
+	Sphere spheres[MAX_SPHERE_COUNT];
 };
 
+// Gold Noise dcerisano@standard3d.com
+// - based on the Golden Ratio
+// - uniform normalized distribution
+// - fastest static noise generator function (also runs at low precision)
+// - use with indicated fractional seeding method. 
+
+float PHI = 1.61803398874989484820459;
+
+float gold_noise(vec2 xy, float seed){
+	return fract(tan(distance(xy*PHI, xy)*seed)*xy.x);
+}
+
 void main() {
+	vec3 background_color = vec3(0.2, 0.6, 0.8);
 	vec3 color = vec3(0.0, 0.0, 0.0);
+	vec3 attenuation = vec3(1.0, 1.0, 1.0);
 
 	vec3 pixel_p = camera.p + position.x*camera.x + position.y*camera.y;
 	vec3 focus   = camera.p + camera.f*camera.z;
 	
 	Ray ray = {focus, normalize(pixel_p - focus)};
+	float t = MAX_FLOAT;
+	int sphere_index = -1;
 
 	// r = p + td
 	// (A - c)*(A - c) = r^2
@@ -57,22 +74,72 @@ void main() {
 	// (t^2)(d*d) + (t)2(p*d - c*d) + p*p - 2c*p + c*c - r^2 = 0
 	// (t^2)(d*d) + (t)2(p - c)*d + (p - c)*(p - c) - r^2 = 0
 
-	// t = (-b +- sqrt(b^2 - 4ac))/(2a)
+	for(int jump_count = 0; jump_count < 8; ++jump_count) {
+		t = MAX_FLOAT;
+		sphere_index = -1;
+		
+		for(int i = 0; i < sphere_count; ++i) {
+			vec3 temp  = ray.p - spheres[i].p;
+			float a    = dot(ray.d, ray.d);
+			float b    = dot(2.0*ray.d, temp);
+			float D    = b*b - 4*a*(dot(temp, temp) - spheres[i].r*spheres[i].r);
 
-	Sphere sphere = spheres[1];
+			if(D > BIAS) {
+				float sqrt_D = sqrt(D);
+				// sqrt_D is > 0.
+				// a is > 0.
+				// If b is > 0, then t1 > t2.
+				// If b is < 0, then t1 > t2.
+				float t1 = 0.5 * (-b + sqrt_D) / a;
+				float t2 = 0.5 * (-b - sqrt_D) / a;
 
-	vec3 temp    = ray.p - sphere.p;
-	float a      = dot(ray.d, ray.d);
-	float b      = dot(2.0*ray.d, temp);
-	float D      = b*b - 4*a*(dot(temp, temp) - sphere.r*sphere.r);
-	// float sqrt_D = sqrt(D);
+				// ...t2...t1...|.............
+				// ........t2...|...t1........
+				// .............|...t2...t1...
 
-	if(D >= bias) {
-		color += sphere.color.xyz;
+				if(t2 > 0) {
+					if(t2 < t) {
+						t = t2;
+						sphere_index = i;
+					}
+				}
+				else if(t1 > 0) {
+					if(t1 < t) {
+						t = t1;
+						sphere_index = i;
+					}
+				}
+			}
+			else if(D >= 0) {
+				float te = 0.5 * (-b) / a;
+				if(te > 0 && te < t) {
+					t = te;
+					sphere_index = i;
+				}
+			}
+		}
+
+		if(sphere_index >= 0 && t < MAX_FLOAT) {
+			ray.p = ray.p + t*ray.d;
+			vec3 sphere_normal = normalize(ray.p - spheres[sphere_index].p);
+			ray.d = reflect(ray.d, sphere_normal);
+
+			if(dot(ray.d, sphere_normal) < 0) {
+				ray.p -= BIAS*sphere_normal;
+			}
+			else {
+				ray.p += BIAS*sphere_normal;
+			}
+
+			attenuation *= spheres[sphere_index].color.xyz;
+		}
+		else {
+			color += background_color;
+			break;
+		}
 	}
 
-	fragment_color = vec4(color, 1.0);
-	//fragment_color = vec4(sphere.color, 1.0);
+	color *= attenuation;
 
-	// fragment_color += vec4(0.0, 1 - pow(sin(15*position.x - 3*time) - 15*position.y, 2), 0.0, 1.0);
+	fragment_color = vec4(color, 1.0);
 }
