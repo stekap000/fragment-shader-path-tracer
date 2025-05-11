@@ -7,6 +7,8 @@
 
 #include <iostream>
 #include <string>
+#include <chrono>
+#include <thread>
 
 #define __ignore__(x)((void)(x))
 #define Internal static
@@ -195,19 +197,19 @@ int main() {
 	const u32 materials_ub_bind_index = 1;
 	const u32 max_sphere_count = 16;
 	const u32 max_material_count = 16;
-	const u32 sphere_count = 2;
-	const u32 material_count = 2;
+	const u32 sphere_count = 3;
+	const u32 material_count = 3;
 
 	Sphere spheres[max_sphere_count] = {
 		{{0.0f, 0.0f, -2.0f}, 1.0f, 0},
-		{{0.0f, -1000.0f, -2.0f} , 1000.0f, 1},
-		// {{-0.5f, 1.0f, -3.0f}, 1.0f, {0.4f, 0.3f, 1.0f, 1.0f}},
+		{{0.0f, -1000.0f, -2.0f}, 1000.0f, 1},
+		{{-2.0f, 2.0f, -4.0f}, 2.0f, 2},
 	};
 
 	Material materials[max_material_count] = {
 		{{1.0f, 0.4f, 0.3f}, 0.7f, {0.0, 0.0, 0.0}},
-		{{0.3f, 1.0f, 0.3f}, 0.8f, {0.0, 0.0, 0.0}},
-		// {{0.4f, 0.3f, 1.0f}, 0.1f, {0.0, 0.0, 0.0}},
+		{{0.3f, 1.0f, 0.3f}, 0.9f, {0.0, 0.0, 0.0}},
+		{{0.7f, 0.7f, 0.7f}, 0.001f, {0.0, 0.0, 0.0}},
 	};
 
 	u32 spheres_ub = create_uniform_buffer(sizeof(spheres));
@@ -224,7 +226,7 @@ int main() {
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, material_count*sizeof(Material), &materials[0]);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-	Camera camera = {{0.0f, 0.0f, 0.0f},
+	Camera camera = {{0.0f, 1.0f, 1.0f},
 					 {1.0f, 0.0f, 0.0f},
 					 {0.0f, 1.0f, 0.0f},
 					 {0.0f, 0.0f, 1.0f},
@@ -245,21 +247,25 @@ int main() {
 	double time_end;
 	
 	time_start = glfwGetTime();
-	
 	while(!glfwWindowShouldClose(window))
 	{
+		
 		if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 			glfwSetWindowShouldClose(window, true);
 		}
 
-		glUniform1f(time_uniform_location, (f32)glfwGetTime());
+		if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+		}
 
+		glUniform1f(time_uniform_location, (f32)glfwGetTime());
+			
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
-					
+			
 		use_shader_program(base_shader_program);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
-		
+			
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 
