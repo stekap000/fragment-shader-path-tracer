@@ -6,11 +6,12 @@
 #define BIAS 0.0001
 #define MAX_FLOAT 3.40282347e+38f
 #define MAX_SPHERE_COUNT 16
+#define MAX_MATERIAL_COUNT 16
 
 struct Sphere {
 	vec3 p;
 	float r;
-	vec4 color;
+	unsigned int mat_index;
 };
 
 struct Camera {
@@ -27,6 +28,12 @@ struct Ray {
 	vec3 d;
 };
 
+struct Material {
+	vec3 reflectance;
+	float scatter;
+	vec3 emittance;
+};
+
 in vec3 position;
 out vec4 fragment_color;
 
@@ -38,8 +45,12 @@ uniform unsigned int sphere_count;
 
 uniform Camera camera;
 
-layout (std140, binding = 0) uniform Scene {
+layout (std140, binding = 0) uniform Spheres {
 	Sphere spheres[MAX_SPHERE_COUNT];
+};
+
+layout (std140, binding = 1) uniform Materials {
+	Material materials[MAX_MATERIAL_COUNT];
 };
 
 // Gold Noise dcerisano@standard3d.com
@@ -74,14 +85,14 @@ void main() {
 	// (t^2)(d*d) + (t)2(p*d - c*d) + p*p - 2c*p + c*c - r^2 = 0
 	// (t^2)(d*d) + (t)2(p - c)*d + (p - c)*(p - c) - r^2 = 0
 
-	for(int jump_count = 0; jump_count < 8; ++jump_count) {
+	for(int jump_count = 0; jump_count < 16; ++jump_count) {
 		t = MAX_FLOAT;
 		sphere_index = -1;
 		
 		for(int i = 0; i < sphere_count; ++i) {
 			vec3 temp  = ray.p - spheres[i].p;
 			float a    = dot(ray.d, ray.d);
-			float b    = dot(2.0*ray.d, temp);
+			float b    = 2.0*dot(ray.d, temp);
 			float D    = b*b - 4*a*(dot(temp, temp) - spheres[i].r*spheres[i].r);
 
 			if(D > BIAS) {
@@ -119,7 +130,7 @@ void main() {
 			}
 		}
 
-		if(sphere_index >= 0 && t < MAX_FLOAT) {
+		if(sphere_index >= 0) {
 			ray.p = ray.p + t*ray.d;
 			vec3 sphere_normal = normalize(ray.p - spheres[sphere_index].p);
 			ray.d = reflect(ray.d, sphere_normal);
@@ -131,9 +142,10 @@ void main() {
 				ray.p += BIAS*sphere_normal;
 			}
 
-			attenuation *= spheres[sphere_index].color.xyz;
+			attenuation *= materials[spheres[sphere_index].mat_index].reflectance;
 		}
 		else {
+			// Add because the sky behaves like emitter.
 			color += background_color;
 			break;
 		}

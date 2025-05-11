@@ -115,10 +115,18 @@ struct Camera {
 	float f;
 };
 
+struct Material {
+	V3 reflectance;
+	f32 scatter;
+	V3 emittance;
+	f32 SHADER_PAD;
+};
+
 struct Sphere {
 	V3 p;
-	float r;
-	V4 color;
+	f32 r;
+	u32 mat_index;
+	f32 SHADER_PAD[3];
 };
 
 u32 create_uniform_buffer(u64 size_in_bytes) {
@@ -183,23 +191,40 @@ int main() {
 	//               struct members and the whole struct itself.
 
 	// NOTE(stekap): Binding is set explicitly in the shader for uniform block "Spheres" (we could also do it here).
-	const u32 uniform_buffer_bind_index = 0;
+	const u32 spheres_ub_bind_index = 0;
+	const u32 materials_ub_bind_index = 1;
 	const u32 max_sphere_count = 16;
+	const u32 max_material_count = 16;
 	const u32 sphere_count = 2;
+	const u32 material_count = 2;
+
 	Sphere spheres[max_sphere_count] = {
-		{{0.0f, 0.0f, -2.0f}, 1.0f, {1.0f, 0.0f, 0.0f, 1.0f}},
-		{{0.0f, -1000.0f, -2.0f} , 1000.0f, {0.0f, 1.0f, 0.0f, 1.0f}}
+		{{0.0f, 0.0f, -2.0f}, 1.0f, 0},
+		{{0.0f, -1000.0f, -2.0f} , 1000.0f, 1},
+		// {{-0.5f, 1.0f, -3.0f}, 1.0f, {0.4f, 0.3f, 1.0f, 1.0f}},
 	};
+
+	Material materials[max_material_count] = {
+		{{1.0f, 0.4f, 0.3f}, 0.7f, {0.0, 0.0, 0.0}},
+		{{0.3f, 1.0f, 0.3f}, 0.8f, {0.0, 0.0, 0.0}},
+		// {{0.4f, 0.3f, 1.0f}, 0.1f, {0.0, 0.0, 0.0}},
+	};
+
+	u32 spheres_ub = create_uniform_buffer(sizeof(spheres));
+	u32 materials_ub = create_uniform_buffer(sizeof(materials));
 	
-	u32 scene_uniform_buffer = create_uniform_buffer(sizeof(spheres));
-	glBindBufferRange(GL_UNIFORM_BUFFER, uniform_buffer_bind_index, scene_uniform_buffer, 0, sizeof(spheres));
+	glBindBufferRange(GL_UNIFORM_BUFFER, spheres_ub_bind_index, spheres_ub, 0, sizeof(spheres));
+	glBindBufferRange(GL_UNIFORM_BUFFER, materials_ub_bind_index, materials_ub, 0, sizeof(materials));
 	
-	glBindBuffer(GL_UNIFORM_BUFFER, scene_uniform_buffer);
-	glBufferSubData(GL_UNIFORM_BUFFER, 0, sphere_count*sizeof(Sphere), &spheres[0]);
+	glBindBuffer(GL_UNIFORM_BUFFER, spheres_ub);
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sphere_count*sizeof(Sphere), &spheres[0]);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-	Camera camera = {{0.0f, 1.0f, 1.0f},
+	glBindBuffer(GL_UNIFORM_BUFFER, materials_ub);
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, material_count*sizeof(Material), &materials[0]);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+	Camera camera = {{0.0f, 0.0f, 0.0f},
 					 {1.0f, 0.0f, 0.0f},
 					 {0.0f, 1.0f, 0.0f},
 					 {0.0f, 0.0f, 1.0f},
