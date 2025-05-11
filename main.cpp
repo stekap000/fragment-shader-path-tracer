@@ -20,8 +20,6 @@ typedef long long int s64;
 typedef float f32;
 typedef double f64;
 
-bool global_engine_running = true;
-
 Internal char* read_entire_text_file(const char* filename) {
 	char* data = 0;
 	unsigned long size = 0;
@@ -45,7 +43,7 @@ Internal char* read_entire_text_file(const char* filename) {
 	return data;
 }
 
-u32 create_shader_program(const char* vertex_shader_path, const char* fragment_shader_path) {
+Internal u32 create_shader_program(const char* vertex_shader_path, const char* fragment_shader_path) {
 	u32 id = 0;
 		
 	char* vertex_shader_source = read_entire_text_file(vertex_shader_path);
@@ -131,7 +129,7 @@ struct Sphere {
 	f32 SHADER_PAD[3];
 };
 
-u32 create_uniform_buffer(u64 size_in_bytes) {
+Internal u32 create_uniform_buffer(u64 size_in_bytes) {
 	u32 uniform_buffer;
 	glGenBuffers(1, &uniform_buffer);
 	glBindBuffer(GL_UNIFORM_BUFFER, uniform_buffer);
@@ -140,7 +138,14 @@ u32 create_uniform_buffer(u64 size_in_bytes) {
 	return uniform_buffer;
 }
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+// NOTE(stekap): Keep track of there global variable so that we don't need to callback
+//               glfwGetWindowSize in order to retrieve them from window.
+Internal int width = 800;
+Internal int height = 640;
+
+Internal void framebuffer_size_callback(GLFWwindow* window, int new_width, int new_height) {
+	width = new_width;
+	height = new_height;
 	glViewport(0, 0, width, height);
 }
 
@@ -150,8 +155,6 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	
-	int width = 800;
-	int height = 640;
 	GLFWwindow* window = glfwCreateWindow(width, height, "ComputeShaderPlayground", NULL, NULL);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	
@@ -161,7 +164,7 @@ int main() {
 		glfwTerminate();
 		return -1;
 	}
-	
+
 	glfwMakeContextCurrent(window);
 
 	if(!gladLoadGL()) {
@@ -192,12 +195,15 @@ int main() {
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(0));
 				
 	u32 base_shader_program = create_shader_program("shaders/base.vert", "shaders/base.frag");
-	s32 time_uniform_location = glGetUniformLocation(base_shader_program, "time");
 	
-	// NOTE(stekap): Caution when ordering data in uniform buffer because of shader alignment
+	// Cache uniform locations for variables that can change values during execution.
+	s32 time_uniform_location   = glGetUniformLocation(base_shader_program, "time");
+	s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
+	s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
+	
+	// NOTE(stekap): Caution when ordering data in uniform buffer because of shader alignment for
 	//               struct members and the whole struct itself.
-
-	// NOTE(stekap): Binding is set explicitly in the shader for uniform block "Spheres" (we could also do it here).
+	
 	const u32 spheres_ub_bind_index = 0;
 	const u32 materials_ub_bind_index = 1;
 	const u32 max_sphere_count = 16;
@@ -219,6 +225,9 @@ int main() {
 
 	u32 spheres_ub = create_uniform_buffer(sizeof(spheres));
 	u32 materials_ub = create_uniform_buffer(sizeof(materials));
+
+	// NOTE(stekap): From shader side, binding is done explicitly in layout specification for
+	//               uniform blocks within shader.
 	
 	glBindBufferRange(GL_UNIFORM_BUFFER, spheres_ub_bind_index, spheres_ub, 0, sizeof(spheres));
 	glBindBufferRange(GL_UNIFORM_BUFFER, materials_ub_bind_index, materials_ub, 0, sizeof(materials));
@@ -238,10 +247,9 @@ int main() {
 					 1.0f};
 
 	use_shader_program(base_shader_program);
-	glUniform1f(glGetUniformLocation(base_shader_program, "width"), (f32)width);
-	glUniform1f(glGetUniformLocation(base_shader_program, "height"), (f32)height);
+	
 	glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"), sphere_count);
-
+	
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
@@ -254,7 +262,6 @@ int main() {
 	time_start = glfwGetTime();
 	while(!glfwWindowShouldClose(window))
 	{
-		
 		if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 			glfwSetWindowShouldClose(window, true);
 		}
@@ -264,6 +271,8 @@ int main() {
 		}
 
 		glUniform1f(time_uniform_location, (f32)glfwGetTime());
+		glUniform1f(width_uniform_location, (f32)width);
+		glUniform1f(height_uniform_location, (f32)height);
 			
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
