@@ -120,7 +120,8 @@ void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
 void main() {
 	float pixel_width = 2.0/width;
 	float pixel_height = 2.0/height;
-	float aspect_ratio = width/height;
+	
+	// TODO(stekap): Handle aspect ratio so that objects are not deformed.
 	
 	vec3 background_color = vec3(0.4, 0.6, 0.8);
 	vec3 color = vec3(0.0, 0.0, 0.0);
@@ -134,7 +135,9 @@ void main() {
 	float t = MAX_FLOAT;
 	int sphere_index = -1;
 
-	int rays_per_pixel = 4;
+	// BUG(stekap): Smaller number of random blue dots appear for lower values of rays_per_pixel, and
+	//              larger number for larger values.
+	int rays_per_pixel = 1;
 	for(int ray_index = 0; ray_index < rays_per_pixel; ++ray_index) {
 		color = vec3(0.0, 0.0, 0.0);
 		attenuation = vec3(1.0, 1.0, 1.0);

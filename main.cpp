@@ -140,15 +140,20 @@ u32 create_uniform_buffer(u64 size_in_bytes) {
 	return uniform_buffer;
 }
 
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+	glViewport(0, 0, width, height);
+}
+
 int main() {
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
+	
 	int width = 800;
 	int height = 640;
 	GLFWwindow* window = glfwCreateWindow(width, height, "ComputeShaderPlayground", NULL, NULL);
+	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	
 	if (!window)
 	{

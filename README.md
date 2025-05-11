@@ -1,2 +1,2 @@
-# compute-shader-playground
-Compute shader playground.
+# fragment-shader-playground
+Fragment shader playground.
