@@ -110,6 +110,7 @@ Internal void use_shader_program(u32 id) {
 struct V3 { f32 x, y, z; };
 struct V4 { f32 x, y, z, w; };
 
+// TODO(stekap): Add camera movement and zoom for debug.
 struct Camera {
 	V3 p, x, y, z;
 	float f;

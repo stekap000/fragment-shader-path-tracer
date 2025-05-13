@@ -53,18 +53,50 @@ layout (std140, binding = 1) uniform Materials {
 	Material materials[MAX_MATERIAL_COUNT];
 };
 
-// NOTE(stekap): This is a modified version of (Gold Noise dcerisano@standard3d.com), which uses vec3.
-
-float noise(vec3 xyz, float seed){
-	xyz *= vec3(width, height, 0);
-	return fract(tan(distance(xyz*1.61803398874989484820459, xyz)*seed)*xyz.x);
-}
-
 // NOTE(stekap): Expects xy to be some larger range of values, for example [0, width] for x coordinate,
 //               instead of just being a float from 0 to 1.
 float gold_noise(vec2 xy, float seed){
 	return fract(tan(distance(xy*1.61803398874989484820459, xy)*seed)*xy.x);
 }
+
+float hash1( vec2 a )
+{
+    return fract( sin( a.x * 3433.8 + a.y * 3843.98 ) * 45933.8 );
+}
+
+// NOTE(stekap): This seems to have speed like gold_noise and hash1. Better distribution than hash1.
+//               Similar distribution like gold_noise. No problems like blue dots that gold_noise produces.
+float hash2(vec2 co){
+    return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+// float noise(vec3 xyz, float seed){
+// 	xyz *= vec3(width, height, 0);
+// 	return fract(tan(distance(xyz*1.61803398874989484820459, xyz)*seed)*xyz.x);
+// }
+
+// float noise(vec3 xyz, float seed) {
+// 	return hash1(seed*xyz.xy);
+// }
+
+float noise(vec3 xyz, float seed) {
+	return hash2(seed*xyz.xy);
+}
+
+// float noise(vec3 xyz, float seed) {
+// 	xyz *= vec3(width, height, 1);
+// 	return gold_noise(xyz.xy, seed);
+// }
+
+float rand_minus_one_to_one(vec3 xyz, float seed) {
+	return -1 + 2*noise(xyz, seed);
+}
+
+float rand_in_range(vec3 xyz, float seed, float min, float max) {
+	return min + (max - min)*noise(xyz, seed);
+}
+
+
 
 void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
 	// r = p + td
@@ -120,6 +152,7 @@ void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
 void main() {
 	float pixel_width = 2.0/width;
 	float pixel_height = 2.0/height;
+	float pixel_lower_radius = min(pixel_width, pixel_height);
 	
 	vec3 background_color = vec3(0.4, 0.6, 0.8);
 	vec3 color = vec3(0.0, 0.0, 0.0);
@@ -132,23 +165,21 @@ void main() {
 	Ray ray = original_ray;
 	float t = MAX_FLOAT;
 	int sphere_index = -1;
-
-	// BUG(stekap): Smaller number of random blue dots appear for lower values of rays_per_pixel, and
-	//              larger number for larger values.
-	int rays_per_pixel = 1;
-	for(int ray_index = 0; ray_index < rays_per_pixel; ++ray_index) {
+	
+	int ray_count = 8;
+	int jump_count = 8;
+	for(int ray_index = 0; ray_index < ray_count; ++ray_index) {
 		color = vec3(0.0, 0.0, 0.0);
 		attenuation = vec3(1.0, 1.0, 1.0);
 
-		float x = noise(ray.p, time + 0.1);
-		float y = noise(ray.p, time + 0.2);
-		float z = noise(ray.p, time + 0.3);
-		vec3 pixel_p_perturbed = pixel_p + 0.95*pixel_height*normalize(ray.d + materials[spheres[sphere_index].mat_index].scatter * normalize(vec3(x, y, z)));;
+		// Currently, random pixel position change is within range (-pixel_dimension, pixel_dimension).
+		// If needed, we can experiment with lower range to make rays more focused.
+		vec3 pixel_p_perturbed = pixel_p + 0.5*rand_in_range(ray.d, time + 0.1, -pixel_width, pixel_width)*camera.x + 0.5*rand_in_range(ray.d, time + 0.2, -pixel_height, pixel_height)*camera.y;
 
 		ray.p = original_ray.p;
 		ray.d = normalize(pixel_p_perturbed - focus);
 		
-		for(int jump_index = 0; jump_index < 8; ++jump_index) {
+		for(int jump_index = 0; jump_index < jump_count; ++jump_index) {
 			t = MAX_FLOAT;
 			sphere_index = -1;
 
@@ -162,7 +193,7 @@ void main() {
 				float x = noise(ray.p, time + 0.1);
 				float y = noise(ray.p, time + 0.2);
 				float z = noise(ray.p, time + 0.3);
-				ray.d = normalize(ray.d + 0.95*materials[spheres[sphere_index].mat_index].scatter * normalize(vec3(x, y, z)));
+				ray.d = normalize(ray.d + materials[spheres[sphere_index].mat_index].scatter * normalize(vec3(x, y, z)));
 
 				if(dot(ray.d, sphere_normal) < 0) {
 					ray.p -= BIAS*sphere_normal;
@@ -183,10 +214,12 @@ void main() {
 		fragment_color += vec4(color * attenuation, 1.0);
 	}
 
-	fragment_color /= rays_per_pixel;
+	fragment_color /= ray_count;
 
 	// NOTE(stekap): For testing noise functions.
-	// fragment_color = vec4(noise(vec3(position.x, position.y, 0), time + 0.1),
-	// 					  noise(vec3(position.x, position.y, 0), time + 0.2),
-	// 					  noise(vec3(position.x, position.y, 0), time + 0.3), 1.0);
+	// for(int i = 0; i < 10000; ++i) {
+	// 	fragment_color = vec4(noise(vec3(position.x, position.y, 0), time + 0.1),
+	// 						  noise(vec3(position.x, position.y, 0), time + 0.2),
+	// 						  noise(vec3(position.x, position.y, 0), time + 0.3), 1.0);
+	// }
 }
