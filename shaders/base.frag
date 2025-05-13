@@ -96,8 +96,6 @@ float rand_in_range(vec3 xyz, float seed, float min, float max) {
 	return min + (max - min)*noise(xyz, seed);
 }
 
-
-
 void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
 	// r = p + td
 	// (A - c)*(A - c) = r^2
@@ -202,6 +200,8 @@ void main() {
 					ray.p += BIAS*sphere_normal;
 				}
 
+				// TODO(stekap): Cosine term.
+				color += attenuation * materials[spheres[sphere_index].mat_index].emittance;
 				attenuation *= materials[spheres[sphere_index].mat_index].reflectance;
 			}
 			else {
@@ -217,9 +217,7 @@ void main() {
 	fragment_color /= ray_count;
 
 	// NOTE(stekap): For testing noise functions.
-	// for(int i = 0; i < 10000; ++i) {
-	// 	fragment_color = vec4(noise(vec3(position.x, position.y, 0), time + 0.1),
-	// 						  noise(vec3(position.x, position.y, 0), time + 0.2),
-	// 						  noise(vec3(position.x, position.y, 0), time + 0.3), 1.0);
-	// }
+	// fragment_color = vec4(noise(vec3(position.x, position.y, 0), time + 0.1),
+	// 					  noise(vec3(position.x, position.y, 0), time + 0.2),
+	// 					  noise(vec3(position.x, position.y, 0), time + 0.3), 1.0);
 }

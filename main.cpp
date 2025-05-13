@@ -130,6 +130,10 @@ struct Sphere {
 	f32 SHADER_PAD[3];
 };
 
+struct Triangle {
+	
+};
+
 Internal u32 create_uniform_buffer(u64 size_in_bytes) {
 	u32 uniform_buffer;
 	glGenBuffers(1, &uniform_buffer);
@@ -209,19 +213,21 @@ int main() {
 	const u32 materials_ub_bind_index = 1;
 	const u32 max_sphere_count = 16;
 	const u32 max_material_count = 16;
-	const u32 sphere_count = 3;
-	const u32 material_count = 3;
+	const u32 sphere_count = 4;
+	const u32 material_count = 4;
 
 	Sphere spheres[max_sphere_count] = {
 		{{0.0f, 0.0f, -2.0f}, 1.0f, 0},
 		{{0.0f, -1000.0f, -2.0f}, 1000.0f, 1},
 		{{-2.0f, 2.0f, -4.0f}, 2.0f, 2},
+		{{-0.5f, 2.5f, -1.0f}, 0.4f, 3},
 	};
 
 	Material materials[max_material_count] = {
 		{{1.0f, 0.4f, 0.3f}, 0.7f, {0.0, 0.0, 0.0}},
 		{{0.3f, 1.0f, 0.3f}, 0.9f, {0.0, 0.0, 0.0}},
 		{{0.7f, 0.7f, 0.7f}, 0.001f, {0.0, 0.0, 0.0}},
+		{{0.8f, 0.8f, 0.8f}, 0.9f, {0.3f, 0.4f, 10.0f}},
 	};
 
 	u32 spheres_ub = create_uniform_buffer(sizeof(spheres));
