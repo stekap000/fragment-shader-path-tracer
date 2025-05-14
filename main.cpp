@@ -116,11 +116,18 @@ struct Camera {
 	float f;
 };
 
+// TODO(stekap): If needed, types that are shared with the shader should be packed better
+//               (when their attributes and value ranges become more apparent).
+
 struct Material {
 	V3 reflectance;
 	f32 scatter;
 	V3 emittance;
 	f32 SHADER_PAD;
+
+	Material() {}
+	Material(V3 reflectance, V3 emittance, f32 scatter)
+		: reflectance(reflectance), emittance(emittance), scatter(scatter) {}
 };
 
 struct Sphere {
@@ -128,10 +135,26 @@ struct Sphere {
 	f32 r;
 	u32 mat_index;
 	f32 SHADER_PAD[3];
+
+	Sphere() {}
+	Sphere(V3 p, f32 r, u32 mat_index) : p(p), r(r), mat_index(mat_index) {}
 };
 
+// TODO(stekap): Assume one normal per triangle for now. Later expand to per-vertex normals.
+//               Also, texture coords should later be included.
 struct Triangle {
-	
+	V3 p1;
+	u32 mat_index;
+	V3 p2;
+	f32 SHADER_PAD0;
+	V3 p3;
+	f32 SHADER_PAD1;
+	V3 n;
+	f32 SHADER_PAD2;
+
+	Triangle() {}
+	Triangle(V3 p1, V3 p2, V3 p3, V3 n, u32 mat_index)
+		: p1(p1), p2(p2), p3(p3), n(n), mat_index(mat_index) {}
 };
 
 Internal u32 create_uniform_buffer(u64 size_in_bytes) {
@@ -209,38 +232,55 @@ int main() {
 	// NOTE(stekap): Caution when ordering data in uniform buffer because of shader alignment for
 	//               struct members and the whole struct itself.
 	
-	const u32 spheres_ub_bind_index = 0;
-	const u32 materials_ub_bind_index = 1;
-	const u32 max_sphere_count = 16;
-	const u32 max_material_count = 16;
-	const u32 sphere_count = 4;
-	const u32 material_count = 4;
+	const u32 spheres_ub_bind_index   = 0;
+	const u32 triangles_ub_bind_index = 1;
+	const u32 materials_ub_bind_index = 2;
+	
+	const u32 max_sphere_count        = 16;
+	const u32 max_material_count      = 16;
+	const u32 max_triangle_count      = 16;
+	
+	const u32 sphere_count            = 4;
+	const u32 triangle_count          = 2;
+	const u32 material_count          = 5;
 
 	Sphere spheres[max_sphere_count] = {
-		{{0.0f, 0.0f, -2.0f}, 1.0f, 0},
-		{{0.0f, -1000.0f, -2.0f}, 1000.0f, 1},
-		{{-2.0f, 2.0f, -4.0f}, 2.0f, 2},
-		{{-0.5f, 2.5f, -1.0f}, 0.4f, 3},
+		Sphere({0.0f, 0.0f, -2.0f}, 1.0f, 0),
+		Sphere({0.0f, -1000.0f, -2.0f}, 1000.0f, 1),
+		Sphere({-2.0f, 2.0f, -4.0f}, 2.0f, 2),
+		Sphere({-0.5f, 2.5f, -1.0f}, 0.4f, 3),
+	};
+
+	Triangle triangles[max_triangle_count] = {
+		Triangle({2.0f, 2.0f, -5.0f}, {3.0f, 0.0f, -2.0f}, {2.5f, 3.0f, -3.5f}, {-4.5, 0.0, 1.5}, 2),
+		Triangle({-1.2f, 0.0f, -2.0f}, {-1.7f, 0.0f, -2.5f}, {-2.0f, 0.0f, -2.0f}, {0.0, 1.0, 0.0}, 4),
 	};
 
 	Material materials[max_material_count] = {
-		{{1.0f, 0.4f, 0.3f}, 0.7f, {0.0, 0.0, 0.0}},
-		{{0.3f, 1.0f, 0.3f}, 0.9f, {0.0, 0.0, 0.0}},
-		{{0.7f, 0.7f, 0.7f}, 0.001f, {0.0, 0.0, 0.0}},
-		{{0.8f, 0.8f, 0.8f}, 0.9f, {0.3f, 0.4f, 10.0f}},
+		Material({1.0f, 0.4f, 0.3f}, {0.0, 0.0, 0.0}, 0.7f),
+		Material({0.3f, 1.0f, 0.3f}, {0.0, 0.0, 0.0}, 0.9f),
+		Material({0.7f, 0.7f, 0.7f}, {0.0, 0.0, 0.0}, 0.001f),
+		Material({0.8f, 0.8f, 0.8f}, {0.3f, 0.4f, 10.0f}, 0.9f),
+		Material({0.8f, 0.2f, 0.2f}, {2.3f, 0.4f, 0.4f}, 0.9f),
 	};
 
-	u32 spheres_ub = create_uniform_buffer(sizeof(spheres));
+	u32 spheres_ub   = create_uniform_buffer(sizeof(spheres));
+	u32 triangles_ub = create_uniform_buffer(sizeof(triangles));
 	u32 materials_ub = create_uniform_buffer(sizeof(materials));
 
 	// NOTE(stekap): From shader side, binding is done explicitly in layout specification for
 	//               uniform blocks within shader.
 	
-	glBindBufferRange(GL_UNIFORM_BUFFER, spheres_ub_bind_index, spheres_ub, 0, sizeof(spheres));
+	glBindBufferRange(GL_UNIFORM_BUFFER, spheres_ub_bind_index,   spheres_ub,   0, sizeof(spheres));
 	glBindBufferRange(GL_UNIFORM_BUFFER, materials_ub_bind_index, materials_ub, 0, sizeof(materials));
+	glBindBufferRange(GL_UNIFORM_BUFFER, triangles_ub_bind_index, triangles_ub, 0, sizeof(triangles));
 	
 	glBindBuffer(GL_UNIFORM_BUFFER, spheres_ub);
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sphere_count*sizeof(Sphere), &spheres[0]);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+	glBindBuffer(GL_UNIFORM_BUFFER, triangles_ub);
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, triangle_count*sizeof(Triangle), &triangles[0]);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 	glBindBuffer(GL_UNIFORM_BUFFER, materials_ub);
@@ -256,6 +296,7 @@ int main() {
 	use_shader_program(base_shader_program);
 	
 	glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"), sphere_count);
+	glUniform1ui(glGetUniformLocation(base_shader_program, "triangle_count"), triangle_count);
 	
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
 	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
