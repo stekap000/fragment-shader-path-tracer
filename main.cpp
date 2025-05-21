@@ -6,6 +6,7 @@
 // #include <glm/gtc/type_ptr.hpp>
 
 #include <iostream>
+#include <cassert>
 #include <string>
 #include <chrono>
 #include <thread>
@@ -142,6 +143,8 @@ struct Sphere {
 
 // TODO(stekap): Assume one normal per triangle for now. Later expand to per-vertex normals.
 //               Also, texture coords should later be included.
+// TODO(stekap): Probably store vertex array separately and have triangle struct hold indices
+//               into such array.
 struct Triangle {
 	V3 p1;
 	u32 mat_index;
@@ -155,6 +158,44 @@ struct Triangle {
 	Triangle() {}
 	Triangle(V3 p1, V3 p2, V3 p3, V3 n, u32 mat_index)
 		: p1(p1), p2(p2), p3(p3), n(n), mat_index(mat_index) {}
+};
+
+struct SimpleShaderConfig {
+	static constexpr u32 max_sphere_count   = 16;
+	static constexpr u32 max_material_count = 16;
+	static constexpr u32 max_triangle_count = 16;
+
+	static constexpr u32 spheres_ub_bind_index   = 0;
+	static constexpr u32 triangles_ub_bind_index = 1;
+	static constexpr u32 materials_ub_bind_index = 2;
+};
+
+struct SimpleScene {
+	std::vector<Sphere> spheres;
+	std::vector<Triangle> triangles;
+	std::vector<Material> materials;
+
+	SimpleScene() {}
+	
+	SimpleScene(u32 sphere_count, u32 triangle_count, u32 material_count) {
+		assert(sphere_count   <= SimpleShaderConfig::max_sphere_count);
+		assert(triangle_count <= SimpleShaderConfig::max_triangle_count);
+		assert(material_count <= SimpleShaderConfig::max_material_count);
+		
+		spheres.resize(sphere_count);
+		spheres.resize(triangle_count);
+		spheres.resize(material_count);
+	}
+
+	SimpleScene(std::vector<Sphere> spheres, std::vector<Triangle> triangles, std::vector<Material> materials) {
+		assert(spheres.size()   <= SimpleShaderConfig::max_sphere_count);
+		assert(triangles.size() <= SimpleShaderConfig::max_triangle_count);
+		assert(materials.size() <= SimpleShaderConfig::max_material_count);
+
+		this->spheres = spheres;
+		this->triangles = triangles;
+		this->materials = materials;
+	}
 };
 
 Internal u32 create_uniform_buffer(u64 size_in_bytes) {
@@ -231,7 +272,7 @@ int main() {
 	
 	// NOTE(stekap): Caution when ordering data in uniform buffer because of shader alignment for
 	//               struct members and the whole struct itself.
-	
+
 	const u32 spheres_ub_bind_index   = 0;
 	const u32 triangles_ub_bind_index = 1;
 	const u32 materials_ub_bind_index = 2;
@@ -261,7 +302,7 @@ int main() {
 		Material({0.3f, 1.0f, 0.3f}, {0.0, 0.0, 0.0}, 0.9f),
 		Material({0.7f, 0.7f, 0.7f}, {0.0, 0.0, 0.0}, 0.001f),
 		Material({0.8f, 0.8f, 0.8f}, {0.3f, 0.4f, 10.0f}, 0.9f),
-		Material({0.8f, 0.2f, 0.2f}, {2.3f, 0.4f, 0.4f}, 0.9f),
+		Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f}, 0.9f),
 	};
 
 	u32 spheres_ub   = create_uniform_buffer(sizeof(spheres));

@@ -269,7 +269,8 @@ void main() {
 				else {
 					ray.p += BIAS*normal;
 				}
-				
+
+				// TODO(stekap): Cosine term.
 				color += attenuation * materials[triangles[triangle_index].mat_index].emittance;
 				attenuation *= materials[triangles[triangle_index].mat_index].reflectance;
 			}
