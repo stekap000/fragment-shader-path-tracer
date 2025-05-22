@@ -324,8 +324,6 @@ struct SimpleScene {
 		std::vector<Triangle> triangles;
 		std::vector<Material> materials;
 
-		//triangles.push_back(Triangle({556.0f, 1250.8f, -500.2f}, {0.0f, 1250.8f, -500.2f}, {0.0f, 700.0f, -500.2f}, {0.0f, 0.0f, 1.0f}, 1));
-
 		// Back wall
 		triangles.push_back(Triangle({0.0f, 0.0f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 548.8f, -559.2f}, {0.0f, 0.0f, 1.0f}, 0));
 		triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, -559.2f}, {0.0f, 0.0f, -559.2f}, {0.0f, 0.0f, 1.0f}, 0));
@@ -335,8 +333,8 @@ struct SimpleScene {
 		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, 1));
 
 		// Right wall
-		// triangles.push_back(Triangle({556.0f, 0.0f, 0.0f}, {556.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, {-1.0f, 0.0f, 0.0f}, 2));
-		// triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, 2));
+		triangles.push_back(Triangle({556.0f, 0.0f, 0.0f}, {556.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, {-1.0f, 0.0f, 0.0f}, 2));
+		triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, 2));
 
 		// Floor
 		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {556.0f, 0.0f, 0.0f}, {556.0f, 0.0f, -559.2f}, {0.0f, 1.0f, 0.0f}, 0));
@@ -345,17 +343,16 @@ struct SimpleScene {
 		// Ceiling
 		triangles.push_back(Triangle({556.0f, 548.8f, 0.0f}, {0.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, {0.0f, -1.0f, 0.0f}, 0));
 		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, {0.0f, -1.0f, 0.0f}, 0));
+
+		// Light
+		triangles.push_back(Triangle({343.0f, 548.5f, -227.0f}, {213.0f, 548.5f, -227.2f}, {343.0f, 548.5f, -332.0f}, {0.0f, -1.0f, 0.0f}, 3));
+		triangles.push_back(Triangle({213.0f, 548.5f, -227.2f}, {213.0f, 548.5f, -332.0f} , {343.0f, 548.5f, -332.0f}, {0.0f, -1.0f, 0.0f}, 3));
 		
 		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // White
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // Green
+		materials.push_back(Material({0.6f, 0.6f, 0.6f}, {3.0f, 3.0f, 3.0f}, 0.95f)); // Light
 
-		// // light
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(343.0, 548.8, 227.0),
-		// 	kajiya::Vec3(343.0, 548.8, 332.0),
-		// 	kajiya::Vec3(213.0, 548.8, 332.0),
-		// 	kajiya::Vec3(213.0, 548.8, 227.0), kajiya::Material::get_light()));
 		// // short block
 		// objects.push_back(new kajiya::Rectangle(
 		// 	kajiya::Vec3(130.0, 165.0, 65.0), kajiya::Vec3(82.0, 165.0, 225.0),
@@ -432,11 +429,11 @@ int main() {
 
 	SimpleScene test_scene = SimpleScene::cornell_box();
 
-	Camera camera = {{278.0f, 274.0f, 300.0f},
+	Camera camera = {{278.0f, 274.0f, 500.0f},
 					 {1.0f, 0.0f, 0.0f},
 					 {0.0f, 1.0f, 0.0f},
 					 {0.0f, 0.0f, 1.0f},
-					 1.0f};
+					 1.5f};
 
 	use_shader_program(base_shader_program);
 
