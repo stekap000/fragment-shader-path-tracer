@@ -232,8 +232,8 @@ void main() {
 	int sphere_index = -1;
 	int triangle_index = -1;
 	
-	int ray_count = 8;
-	int jump_count = 8;
+	int ray_count = 4;
+	int jump_count = 4;
 	for(int ray_index = 0; ray_index < ray_count; ++ray_index) {
 		color = vec3(0.0, 0.0, 0.0);
 		attenuation = vec3(1.0, 1.0, 1.0);
