@@ -21,6 +21,71 @@ typedef long long int s64;
 typedef float f32;
 typedef double f64;
 
+// NOTE(stekap): Keep track of there global variable so that we don't need to callback
+//               glfwGetWindowSize in order to retrieve them from window.
+Internal int width = 800;
+Internal int height = 640;
+
+Internal void framebuffer_size_callback(GLFWwindow* window, int new_width, int new_height) {
+	width = new_width;
+	height = new_height;
+	glViewport(0, 0, width, height);
+}
+
+namespace Setup {
+	Internal GLFWwindow* window() {
+		glfwInit();
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	
+		GLFWwindow* window = glfwCreateWindow(width, height, "ComputeShaderPlayground", NULL, NULL);
+		glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+	
+		if (!window)
+		{
+			std::cout << "GLFW window creating failed." << std::endl;
+			glfwTerminate();
+			return nullptr;
+		}
+
+		glfwMakeContextCurrent(window);
+
+		if(!gladLoadGL()) {
+			std::cout << "GLAD initialization failed." << std::endl;
+			glfwTerminate();
+			return nullptr;
+		}
+
+		glViewport(0, 0, width, height);
+
+		return window;
+	}
+
+	Internal void tracer_rectangle() {
+		f32 target_rectangle_vertex_data[] = {
+			-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
+			1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
+			-1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+			-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
+			1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
+			1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
+		};
+									
+		u32 target_rect_vbo;
+		glGenBuffers(1, &target_rect_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, target_rect_vbo);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(target_rectangle_vertex_data), target_rectangle_vertex_data, GL_STATIC_DRAW);
+
+		u32 vao;
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(0));
+	}
+}
+
 Internal char* read_entire_text_file(const char* filename) {
 	char* data = 0;
 	unsigned long size = 0;
@@ -169,14 +234,14 @@ Internal u32 create_uniform_buffer(u64 size_in_bytes) {
 	return uniform_buffer;
 }
 
-struct SimpleShaderConfig {
-	static constexpr u32 max_sphere_count   = 16;
-	static constexpr u32 max_material_count = 16;
-	static constexpr u32 max_triangle_count = 16;
+namespace SimpleShaderConfig {
+	Internal constexpr u32 max_sphere_count   = 32;
+	Internal constexpr u32 max_material_count = 32;
+	Internal constexpr u32 max_triangle_count = 32;
 
-	static constexpr u32 spheres_ub_bind_index   = 0;
-	static constexpr u32 triangles_ub_bind_index = 1;
-	static constexpr u32 materials_ub_bind_index = 2;
+	Internal constexpr u32 spheres_ub_bind_index   = 0;
+	Internal constexpr u32 triangles_ub_bind_index = 1;
+	Internal constexpr u32 materials_ub_bind_index = 2;
 };
 
 struct SimpleScene {
@@ -196,11 +261,11 @@ struct SimpleScene {
 		assert(material_count <= SimpleShaderConfig::max_material_count);
 		
 		spheres.resize(sphere_count);
-		spheres.resize(triangle_count);
-		spheres.resize(material_count);
+		triangles.resize(triangle_count);
+		materials.resize(material_count);
 	}
 
-	SimpleScene(std::vector<Sphere> spheres, std::vector<Triangle> triangles, std::vector<Material> materials) {
+	SimpleScene(std::vector<Sphere>& spheres, std::vector<Triangle>& triangles, std::vector<Material>& materials) {
 		assert(spheres.size()   <= SimpleShaderConfig::max_sphere_count);
 		assert(triangles.size() <= SimpleShaderConfig::max_triangle_count);
 		assert(materials.size() <= SimpleShaderConfig::max_material_count);
@@ -229,92 +294,117 @@ struct SimpleScene {
 	}
 
 	static SimpleScene test_scene() {
-		SimpleScene test_scene({
-				Sphere({0.0f, 0.0f, -2.0f}, 1.0f, 0),
-				Sphere({0.0f, -1000.0f, -2.0f}, 1000.0f, 1),
-				Sphere({-2.0f, 2.0f, -4.0f}, 2.0f, 2),
-				Sphere({-0.5f, 2.5f, -1.0f}, 0.4f, 3),
-			}, {
-				Triangle({2.0f, 2.0f, -5.0f}, {3.0f, 0.0f, -2.0f}, {2.5f, 3.0f, -3.5f}, {-4.5, 0.0, 1.5}, 2),
-				Triangle({-1.2f, 0.0f, -2.0f}, {-1.7f, 0.0f, -2.5f}, {-2.0f, 0.0f, -2.0f}, {0.0, 1.0, 0.0}, 4),
-			}, {
-				Material({1.0f, 0.4f, 0.3f}, {0.0, 0.0, 0.0}, 0.7f),
-				Material({0.3f, 1.0f, 0.3f}, {0.0, 0.0, 0.0}, 0.9f),
-				Material({0.7f, 0.7f, 0.7f}, {0.0, 0.0, 0.0}, 0.001f),
-				Material({0.8f, 0.8f, 0.8f}, {0.3f, 0.4f, 10.0f}, 0.9f),
-				Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f}, 0.9f),
-			});
+		std::vector<Sphere> spheres = {
+			Sphere({0.0f, 0.0f, -2.0f}, 1.0f, 0),
+			Sphere({0.0f, -1000.0f, -2.0f}, 1000.0f, 1),
+			Sphere({-2.0f, 2.0f, -4.0f}, 2.0f, 2),
+			Sphere({-0.5f, 2.5f, -1.0f}, 0.4f, 3),
+		};
 
-		test_scene.create_and_fill_uniform_buffers();
+		std::vector<Triangle> triangles = {
+			Triangle({2.0f, 2.0f, -5.0f}, {3.0f, 0.0f, -2.0f}, {2.5f, 3.0f, -3.5f}, {-4.5, 0.0, 1.5}, 2),
+			Triangle({-1.2f, 0.0f, -2.0f}, {-1.7f, 0.0f, -2.5f}, {-2.0f, 0.0f, -2.0f}, {0.0, 1.0, 0.0}, 4),
+		};
 
-		return test_scene;
+		std::vector<Material> material = {
+			Material({1.0f, 0.4f, 0.3f}, {0.0, 0.0, 0.0}, 0.7f),
+			Material({0.3f, 1.0f, 0.3f}, {0.0, 0.0, 0.0}, 0.9f),
+			Material({0.7f, 0.7f, 0.7f}, {0.0, 0.0, 0.0}, 0.001f),
+			Material({0.8f, 0.8f, 0.8f}, {0.3f, 0.4f, 10.0f}, 0.9f),
+			Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f}, 0.9f),
+		};
+		
+		SimpleScene scene(spheres, triangles, material);
+		scene.create_and_fill_uniform_buffers();
+		return scene;
+	}
+
+	static SimpleScene cornell_box() {
+		std::vector<Sphere> spheres;
+		std::vector<Triangle> triangles;
+		std::vector<Material> materials;
+
+		//triangles.push_back(Triangle({556.0f, 1250.8f, -500.2f}, {0.0f, 1250.8f, -500.2f}, {0.0f, 700.0f, -500.2f}, {0.0f, 0.0f, 1.0f}, 1));
+
+		// Back wall
+		triangles.push_back(Triangle({0.0f, 0.0f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 548.8f, -559.2f}, {0.0f, 0.0f, 1.0f}, 0));
+		triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, -559.2f}, {0.0f, 0.0f, -559.2f}, {0.0f, 0.0f, 1.0f}, 0));
+
+		// Left wall
+		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -559.2f}, {0.0f, 548.8f, -559.2f}, {1.0f, 0.0f, 0.0f}, 1));
+		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, 1));
+
+		// Right wall
+		// triangles.push_back(Triangle({556.0f, 0.0f, 0.0f}, {556.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, {-1.0f, 0.0f, 0.0f}, 2));
+		// triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, 2));
+
+		// Floor
+		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {556.0f, 0.0f, 0.0f}, {556.0f, 0.0f, -559.2f}, {0.0f, 1.0f, 0.0f}, 0));
+		triangles.push_back(Triangle({556.0f, 0.0f, -559.2f}, {0.0f, 0.0f, -559.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0));
+
+		// Ceiling
+		triangles.push_back(Triangle({556.0f, 548.8f, 0.0f}, {0.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, {0.0f, -1.0f, 0.0f}, 0));
+		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, {0.0f, -1.0f, 0.0f}, 0));
+		
+		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // White
+		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // Red
+		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // Green
+
+		// // light
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(343.0, 548.8, 227.0),
+		// 	kajiya::Vec3(343.0, 548.8, 332.0),
+		// 	kajiya::Vec3(213.0, 548.8, 332.0),
+		// 	kajiya::Vec3(213.0, 548.8, 227.0), kajiya::Material::get_light()));
+		// // short block
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(130.0, 165.0, 65.0), kajiya::Vec3(82.0, 165.0, 225.0),
+		// 	kajiya::Vec3(240.0, 165.0, 272.0),
+		// 	kajiya::Vec3(290.0, 165.0, 114.0), kajiya::Material::get_white()));
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(290.0, 0.0, 114.0), kajiya::Vec3(290.0, 165.0, 114.0),
+		// 	kajiya::Vec3(240.0, 165.0, 272.0), kajiya::Vec3(240.0, 0.0, 272.0),
+		// 	kajiya::Material::get_white()));
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(130.0, 0.0, 65.0), kajiya::Vec3(130.0, 165.0, 65.0),
+		// 	kajiya::Vec3(290.0, 165.0, 114.0), kajiya::Vec3(290.0, 0.0, 114.0),
+		// 	kajiya::Material::get_white()));
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(82.0, 0.0, 225.0), kajiya::Vec3(82.0, 165.0, 225.0),
+		// 	kajiya::Vec3(130.0, 165.0, 65.0), kajiya::Vec3(130.0, 0.0, 65.0),
+		// 	kajiya::Material::get_white()));
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(240.0, 0.0, 272.0), kajiya::Vec3(240.0, 165.0, 272.0),
+		// 	kajiya::Vec3(82.0, 165.0, 225.0), kajiya::Vec3(82.0, 0.0, 225.0),
+		// 	kajiya::Material::get_white()));
+		// // tall block
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(423.0, 330.0, 247.0),
+		// 	kajiya::Vec3(265.0, 330.0, 296.0),
+		// 	kajiya::Vec3(314.0, 330.0, 456.0),
+		// 	kajiya::Vec3(472.0, 330.0, 406.0), kajiya::Material::get_white()));
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(423.0, 0.0, 247.0), kajiya::Vec3(423.0, 330.0, 247.0),
+		// 	kajiya::Vec3(472.0, 330.0, 406.0), kajiya::Vec3(472.0, 0.0, 406.0),
+		// 	kajiya::Material::get_white()));
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(472.0, 0.0, 406.0), kajiya::Vec3(472.0, 330.0, 406.0),
+		// 	kajiya::Vec3(314.0, 330.0, 456.0), kajiya::Vec3(314.0, 0.0, 456.0),
+		// 	kajiya::Material::get_white()));
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(314.0, 0.0, 456.0), kajiya::Vec3(314.0, 330.0, 456.0),
+		// 	kajiya::Vec3(265.0, 330.0, 296.0), kajiya::Vec3(265.0, 0.0, 296.0),
+		// 	kajiya::Material::get_white()));
+		// objects.push_back(new kajiya::Rectangle(
+		// 	kajiya::Vec3(265.0, 0.0, 296.0), kajiya::Vec3(265.0, 330.0, 296.0),
+		// 	kajiya::Vec3(423.0, 330.0, 247.0), kajiya::Vec3(423.0, 0.0, 247.0),
+		// 	kajiya::Material::get_white()));
+
+		SimpleScene scene(spheres, triangles, materials);
+		scene.create_and_fill_uniform_buffers();
+		return scene;
 	}
 };
-
-// NOTE(stekap): Keep track of there global variable so that we don't need to callback
-//               glfwGetWindowSize in order to retrieve them from window.
-Internal int width = 800;
-Internal int height = 640;
-
-Internal void framebuffer_size_callback(GLFWwindow* window, int new_width, int new_height) {
-	width = new_width;
-	height = new_height;
-	glViewport(0, 0, width, height);
-}
-
-namespace Setup {
-	GLFWwindow* window() {
-		glfwInit();
-		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	
-		GLFWwindow* window = glfwCreateWindow(width, height, "ComputeShaderPlayground", NULL, NULL);
-		glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-	
-		if (!window)
-		{
-			std::cout << "GLFW window creating failed." << std::endl;
-			glfwTerminate();
-			return nullptr;
-		}
-
-		glfwMakeContextCurrent(window);
-
-		if(!gladLoadGL()) {
-			std::cout << "GLAD initialization failed." << std::endl;
-			glfwTerminate();
-			return nullptr;
-		}
-
-		glViewport(0, 0, width, height);
-
-		return window;
-	}
-
-	void tracer_rectangle() {
-		f32 target_rectangle_vertex_data[] = {
-			-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
-			1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
-			-1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
-			-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
-			1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
-			1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
-		};
-									
-		u32 target_rect_vbo;
-		glGenBuffers(1, &target_rect_vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, target_rect_vbo);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(target_rectangle_vertex_data), target_rectangle_vertex_data, GL_STATIC_DRAW);
-
-		u32 vao;
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(0));
-	}
-}
 
 int main() {
 	GLFWwindow* window = Setup::window();
@@ -332,16 +422,24 @@ int main() {
 	s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
 	s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
 	
-	SimpleScene test_scene = SimpleScene::test_scene();
+	// SimpleScene test_scene = SimpleScene::test_scene();
 
-	Camera camera = {{0.0f, 1.0f, 1.0f},
+	// Camera camera = {{0.0f, 1.0f, 1.0f},
+	// 				 {1.0f, 0.0f, 0.0f},
+	// 				 {0.0f, 1.0f, 0.0f},
+	// 				 {0.0f, 0.0f, 1.0f},
+	// 				 1.0f};
+
+	SimpleScene test_scene = SimpleScene::cornell_box();
+
+	Camera camera = {{278.0f, 274.0f, 300.0f},
 					 {1.0f, 0.0f, 0.0f},
 					 {0.0f, 1.0f, 0.0f},
 					 {0.0f, 0.0f, 1.0f},
 					 1.0f};
 
 	use_shader_program(base_shader_program);
-	
+
 	glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"),   (u32)test_scene.spheres.size());
 	glUniform1ui(glGetUniformLocation(base_shader_program, "triangle_count"), (u32)test_scene.triangles.size());
 	

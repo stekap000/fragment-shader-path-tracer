@@ -5,9 +5,9 @@
 
 #define BIAS               0.0001
 #define MAX_FLOAT          3.40282347e+38f
-#define MAX_SPHERE_COUNT   16
-#define MAX_MATERIAL_COUNT 16
-#define MAX_TRIANGLE_COUNT 16
+#define MAX_SPHERE_COUNT   32
+#define MAX_MATERIAL_COUNT 32
+#define MAX_TRIANGLE_COUNT 32
 
 struct Sphere {
 	vec3 p;
@@ -199,7 +199,7 @@ void intersect_triangles(inout Ray ray, inout int triangle_index, inout float t)
 				if(v >= 0 && v <= 1) {
 					if(u + v <= 1) {
 						float temp_t = inv_det * dot(Q, E2);
-						if(temp_t < t) {
+						if(temp_t > 0 && temp_t < t) {
 							t = temp_t;
 							triangle_index = i;
 						}
@@ -219,7 +219,8 @@ void main() {
 	float pixel_height = 2.0/height;
 	float pixel_lower_radius = min(pixel_width, pixel_height);
 	
-	vec3 background_color = vec3(0.4, 0.6, 0.8);
+	//vec3 background_color = vec3(0.4, 0.6, 0.8);
+	vec3 background_color = vec3(0.9, 0.9, 0.9);
 	vec3 color = vec3(0.0, 0.0, 0.0);
 	vec3 attenuation = vec3(1.0, 1.0, 1.0);
 
@@ -233,7 +234,7 @@ void main() {
 	int triangle_index = -1;
 	
 	int ray_count = 4;
-	int jump_count = 4;
+	int jump_count = 8;
 	for(int ray_index = 0; ray_index < ray_count; ++ray_index) {
 		color = vec3(0.0, 0.0, 0.0);
 		attenuation = vec3(1.0, 1.0, 1.0);
