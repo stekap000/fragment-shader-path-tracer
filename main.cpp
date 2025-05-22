@@ -262,51 +262,69 @@ Internal void framebuffer_size_callback(GLFWwindow* window, int new_width, int n
 	glViewport(0, 0, width, height);
 }
 
-int main() {
-	glfwInit();
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+namespace Setup {
+	GLFWwindow* window() {
+		glfwInit();
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	
-	GLFWwindow* window = glfwCreateWindow(width, height, "ComputeShaderPlayground", NULL, NULL);
-	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+		GLFWwindow* window = glfwCreateWindow(width, height, "ComputeShaderPlayground", NULL, NULL);
+		glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	
-	if (!window)
-	{
-		std::cout << "GLFW window creating failed." << std::endl;
-		glfwTerminate();
-		return -1;
+		if (!window)
+		{
+			std::cout << "GLFW window creating failed." << std::endl;
+			glfwTerminate();
+			return nullptr;
+		}
+
+		glfwMakeContextCurrent(window);
+
+		if(!gladLoadGL()) {
+			std::cout << "GLAD initialization failed." << std::endl;
+			glfwTerminate();
+			return nullptr;
+		}
+
+		glViewport(0, 0, width, height);
+
+		return window;
 	}
 
-	glfwMakeContextCurrent(window);
-
-	if(!gladLoadGL()) {
-		std::cout << "GLAD initialization failed." << std::endl;
-	}
-
-	glViewport(0, 0, width, height);
-
-	f32 target_rectangle_vertex_data[] = {
-		-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
-		 1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
-		-1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
-		-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
-		 1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
-		 1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
-	};
+	void tracer_rectangle() {
+		f32 target_rectangle_vertex_data[] = {
+			-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
+			1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
+			-1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
+			-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
+			1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
+			1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
+		};
 									
-	u32 target_rect_vbo;
-	glGenBuffers(1, &target_rect_vbo);
-	glBindBuffer(GL_ARRAY_BUFFER, target_rect_vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(target_rectangle_vertex_data), target_rectangle_vertex_data, GL_STATIC_DRAW);
+		u32 target_rect_vbo;
+		glGenBuffers(1, &target_rect_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, target_rect_vbo);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(target_rectangle_vertex_data), target_rectangle_vertex_data, GL_STATIC_DRAW);
 
-	u32 vao;
-	glGenVertexArrays(1, &vao);
-	glBindVertexArray(vao);
+		u32 vao;
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
 
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(0));
-				
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(0));
+	}
+}
+
+int main() {
+	GLFWwindow* window = Setup::window();
+	
+	if(!window) {
+		return - 1;
+	}
+
+	Setup::tracer_rectangle();
+
 	u32 base_shader_program = create_shader_program("shaders/base.vert", "shaders/base.frag");
 	
 	// Cache uniform locations for variables that can change values during execution.
@@ -314,9 +332,6 @@ int main() {
 	s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
 	s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
 	
-	// NOTE(stekap): Caution when ordering data in uniform buffer because of shader alignment for
-	//               struct members and the whole struct itself.
-
 	SimpleScene test_scene = SimpleScene::test_scene();
 
 	Camera camera = {{0.0f, 1.0f, 1.0f},
