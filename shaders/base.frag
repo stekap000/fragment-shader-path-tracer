@@ -20,8 +20,12 @@ struct Triangle {
 	unsigned int mat_index;
 	vec3 p2;
 	vec3 p3;
-	vec3 n;
 };
+
+// NOTE(stekap): Right hand rule.
+vec3 triangle_normal(in Triangle t) {
+	return normalize(cross(t.p2 - t.p1, t.p3 - t.p1));
+}
 
 struct Camera {
 	vec3 p;
@@ -180,6 +184,8 @@ void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
 	}
 }
 
+// NOTE(stekap): This function assumes that the triangle points order matches the normal
+//               via right hand rule.
 void intersect_triangles(inout Ray ray, inout int triangle_index, inout float t) {
 	// D   - ray direction
 	// T   - ray origin minus triangle's first point
@@ -271,7 +277,7 @@ void main() {
 
 			if(triangle_index >= 0) {
 				ray.p = ray.p + t*ray.d;
-				vec3 normal = normalize(triangles[triangle_index].n);
+				vec3 normal = triangle_normal(triangles[triangle_index]);
 				ray.d = reflect(ray.d, normal);
 
 				ray.d = mix(ray.d,

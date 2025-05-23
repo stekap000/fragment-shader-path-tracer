@@ -217,12 +217,10 @@ struct Triangle {
 	f32 SHADER_PAD0;
 	V3 p3;
 	f32 SHADER_PAD1;
-	V3 n;
-	f32 SHADER_PAD2;
 
 	Triangle() {}
-	Triangle(V3 p1, V3 p2, V3 p3, V3 n, u32 mat_index)
-		: p1(p1), p2(p2), p3(p3), n(n), mat_index(mat_index) {}
+	Triangle(V3 p1, V3 p2, V3 p3, u32 mat_index)
+		: p1(p1), p2(p2), p3(p3), mat_index(mat_index) {}
 };
 
 Internal u32 create_uniform_buffer(u64 size_in_bytes) {
@@ -302,8 +300,8 @@ struct SimpleScene {
 		};
 
 		std::vector<Triangle> triangles = {
-			Triangle({2.0f, 2.0f, -5.0f}, {3.0f, 0.0f, -2.0f}, {2.5f, 3.0f, -3.5f}, {-4.5, 0.0, 1.5}, 2),
-			Triangle({-1.2f, 0.0f, -2.0f}, {-1.7f, 0.0f, -2.5f}, {-2.0f, 0.0f, -2.0f}, {0.0, 1.0, 0.0}, 4),
+			Triangle({2.0f, 2.0f, -5.0f}, {3.0f, 0.0f, -2.0f}, {2.5f, 3.0f, -3.5f}, 2),
+			Triangle({-1.2f, 0.0f, -2.0f}, {-1.7f, 0.0f, -2.5f}, {-2.0f, 0.0f, -2.0f}, 4),
 		};
 
 		std::vector<Material> material = {
@@ -324,78 +322,76 @@ struct SimpleScene {
 		std::vector<Triangle> triangles;
 		std::vector<Material> materials;
 
+		// Light
+		triangles.push_back(Triangle({343.0f, 548.5f, -227.0f}, {213.0f, 548.5f, -227.2f}, {343.0f, 548.5f, -332.0f}, 3));
+		triangles.push_back(Triangle({213.0f, 548.5f, -227.2f}, {213.0f, 548.5f, -332.0f} , {343.0f, 548.5f, -332.0f}, 3));
+
 		// Back wall
-		triangles.push_back(Triangle({0.0f, 0.0f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 548.8f, -559.2f}, {0.0f, 0.0f, 1.0f}, 0));
-		triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, -559.2f}, {0.0f, 0.0f, -559.2f}, {0.0f, 0.0f, 1.0f}, 0));
+		triangles.push_back(Triangle({0.0f, 0.0f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 548.8f, -559.2f}, 0));
+		triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, -559.2f}, {0.0f, 0.0f, -559.2f}, 0));
 
 		// Left wall
-		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -559.2f}, {0.0f, 548.8f, -559.2f}, {1.0f, 0.0f, 0.0f}, 1));
-		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, 1));
+		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -559.2f}, {0.0f, 548.8f, -559.2f}, 1));
+		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, {0.0f, 0.0f, 0.0f}, 1));
 
 		// Right wall
-		triangles.push_back(Triangle({556.0f, 0.0f, 0.0f}, {556.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, {-1.0f, 0.0f, 0.0f}, 2));
-		triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, 2));
+		triangles.push_back(Triangle({556.0f, 0.0f, 0.0f}, {556.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, 2));
+		triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 0.0f, 0.0f}, 2));
 
 		// Floor
-		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {556.0f, 0.0f, 0.0f}, {556.0f, 0.0f, -559.2f}, {0.0f, 1.0f, 0.0f}, 0));
-		triangles.push_back(Triangle({556.0f, 0.0f, -559.2f}, {0.0f, 0.0f, -559.2f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0));
+		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {556.0f, 0.0f, 0.0f}, {556.0f, 0.0f, -559.2f}, 0));
+		triangles.push_back(Triangle({556.0f, 0.0f, -559.2f}, {0.0f, 0.0f, -559.2f}, {0.0f, 0.0f, 0.0f}, 0));
 
 		// Ceiling
-		triangles.push_back(Triangle({556.0f, 548.8f, 0.0f}, {0.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, {0.0f, -1.0f, 0.0f}, 0));
-		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, {0.0f, -1.0f, 0.0f}, 0));
+		triangles.push_back(Triangle({556.0f, 548.8f, 0.0f}, {0.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, 0));
+		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, 0));
 
-		// Light
-		triangles.push_back(Triangle({343.0f, 548.5f, -227.0f}, {213.0f, 548.5f, -227.2f}, {343.0f, 548.5f, -332.0f}, {0.0f, -1.0f, 0.0f}, 3));
-		triangles.push_back(Triangle({213.0f, 548.5f, -227.2f}, {213.0f, 548.5f, -332.0f} , {343.0f, 548.5f, -332.0f}, {0.0f, -1.0f, 0.0f}, 3));
+		// Short block
+		// Top
+		triangles.push_back(Triangle({426.0f, 165.0f, -65.0f}, {474.0f, 165.0f, -225.0f}, {316.0f, 165.0f, -272.0f}, 0));
+		triangles.push_back(Triangle({266.0f, 165.0f, -114.0f}, {426.0f, 165.0f, -65.0f}, {316.0f, 165.0f, -272.0f}, 0));
+
+		// Left
+		triangles.push_back(Triangle({266.0f, 0.0f, -114.0f}, {266.0f, 165.0f, -114.0f}, {316.0f, 165.0f, -272.0f}, 0));
+		triangles.push_back(Triangle({266.0f, 0.0f, -114.0f}, {316.0f, 165.0f, -272.0f}, {316.0f, 0.0f, -272.0f}, 0));
+
+		// Right
+		triangles.push_back(Triangle({474.0f, 0.0f, -225.0f}, {474.0f, 165.0f, -225.0f}, {426.0f, 165.0f, -65.0f}, 0));
+		triangles.push_back(Triangle({474.0f, 0.0f, -225.0f}, {426.0f, 165.0f, -65.0f}, {426.0f, 0.0f, -65.0f}, 0));
+
+		// Front
+		triangles.push_back(Triangle({426.0f, 0.0f, -65.0f}, {426.0f, 165.0f, -65.0f}, {266.0f, 165.0f, -114.0f}, 0));
+		triangles.push_back(Triangle({426.0f, 0.0f, -65.0f}, {266.0f, 165.0f, -114.0f}, {266.0f, 0.0f, -114.0f}, 0));
+
+		// Back
+		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {316.0f, 165.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, 0));
+		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, {474.0f, 0.0f, -225.0f}, 0));
+		
+		// Tall block
+		// Top
+		triangles.push_back(Triangle({133.0f, 330.0f, -247.0f}, {291.0f, 330.0f, -296.0f}, {242.0f, 330.0f, -456.0f}, 0));
+		triangles.push_back(Triangle({133.0f, 330.0f, -247.0f}, {242.0f, 330.0f, -456.0f}, {84.0f, 330.0f, -406.0f}, 0));
+
+		// Left
+		triangles.push_back(Triangle({133.0f, 0.0f, -247.0f}, {133.0f, 330.0f, -247.0f}, {84.0f, 330.0f, -406.0f}, 0));
+		triangles.push_back(Triangle({133.0f, 0.0f, -247.0f}, {84.0f, 330.0f, -406.0f}, {84.0f, 0.0f, -406.0f}, 0));
+
+		// Right
+		triangles.push_back(Triangle({242.0f, 0.0f, -456.0f}, {242.0f, 330.0f, -456.0f}, {291.0f, 330.0f, -296.0f}, 0));
+		triangles.push_back(Triangle({242.0f, 0.0f, -456.0f}, {291.0f, 330.0f, -296.0f}, {291.0f, 0.0f, -296.0f}, 0));
+
+		// Front
+		triangles.push_back(Triangle({291.0f, 0.0f, -296.0f}, {291.0f, 330.0f, -296.0f}, {133.0f, 330.0f, -247.0f}, 0));
+		triangles.push_back(Triangle({291.0f, 0.0f, -296.0f}, {133.0f, 330.0f, -247.0f}, {133.0f, 0.0f, -247.0f}, 0));
+		
+		// Back
+		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {84.0f, 330.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, 0));
+		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, {242.0f, 0.0f, -456.0f}, 0));
 		
 		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // White
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // Green
 		materials.push_back(Material({0.6f, 0.6f, 0.6f}, {3.0f, 3.0f, 3.0f}, 0.95f)); // Light
-
-		// // short block
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(130.0, 165.0, 65.0), kajiya::Vec3(82.0, 165.0, 225.0),
-		// 	kajiya::Vec3(240.0, 165.0, 272.0),
-		// 	kajiya::Vec3(290.0, 165.0, 114.0), kajiya::Material::get_white()));
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(290.0, 0.0, 114.0), kajiya::Vec3(290.0, 165.0, 114.0),
-		// 	kajiya::Vec3(240.0, 165.0, 272.0), kajiya::Vec3(240.0, 0.0, 272.0),
-		// 	kajiya::Material::get_white()));
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(130.0, 0.0, 65.0), kajiya::Vec3(130.0, 165.0, 65.0),
-		// 	kajiya::Vec3(290.0, 165.0, 114.0), kajiya::Vec3(290.0, 0.0, 114.0),
-		// 	kajiya::Material::get_white()));
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(82.0, 0.0, 225.0), kajiya::Vec3(82.0, 165.0, 225.0),
-		// 	kajiya::Vec3(130.0, 165.0, 65.0), kajiya::Vec3(130.0, 0.0, 65.0),
-		// 	kajiya::Material::get_white()));
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(240.0, 0.0, 272.0), kajiya::Vec3(240.0, 165.0, 272.0),
-		// 	kajiya::Vec3(82.0, 165.0, 225.0), kajiya::Vec3(82.0, 0.0, 225.0),
-		// 	kajiya::Material::get_white()));
-		// // tall block
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(423.0, 330.0, 247.0),
-		// 	kajiya::Vec3(265.0, 330.0, 296.0),
-		// 	kajiya::Vec3(314.0, 330.0, 456.0),
-		// 	kajiya::Vec3(472.0, 330.0, 406.0), kajiya::Material::get_white()));
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(423.0, 0.0, 247.0), kajiya::Vec3(423.0, 330.0, 247.0),
-		// 	kajiya::Vec3(472.0, 330.0, 406.0), kajiya::Vec3(472.0, 0.0, 406.0),
-		// 	kajiya::Material::get_white()));
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(472.0, 0.0, 406.0), kajiya::Vec3(472.0, 330.0, 406.0),
-		// 	kajiya::Vec3(314.0, 330.0, 456.0), kajiya::Vec3(314.0, 0.0, 456.0),
-		// 	kajiya::Material::get_white()));
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(314.0, 0.0, 456.0), kajiya::Vec3(314.0, 330.0, 456.0),
-		// 	kajiya::Vec3(265.0, 330.0, 296.0), kajiya::Vec3(265.0, 0.0, 296.0),
-		// 	kajiya::Material::get_white()));
-		// objects.push_back(new kajiya::Rectangle(
-		// 	kajiya::Vec3(265.0, 0.0, 296.0), kajiya::Vec3(265.0, 330.0, 296.0),
-		// 	kajiya::Vec3(423.0, 330.0, 247.0), kajiya::Vec3(423.0, 0.0, 247.0),
-		// 	kajiya::Material::get_white()));
 
 		SimpleScene scene(spheres, triangles, materials);
 		scene.create_and_fill_uniform_buffers();
@@ -418,23 +414,25 @@ int main() {
 	s32 time_uniform_location   = glGetUniformLocation(base_shader_program, "time");
 	s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
 	s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
-	
-	// SimpleScene test_scene = SimpleScene::test_scene();
 
-	// Camera camera = {{0.0f, 1.0f, 1.0f},
-	// 				 {1.0f, 0.0f, 0.0f},
-	// 				 {0.0f, 1.0f, 0.0f},
-	// 				 {0.0f, 0.0f, 1.0f},
-	// 				 1.0f};
+#if 0
+	SimpleScene test_scene = SimpleScene::test_scene();
 
-	SimpleScene test_scene = SimpleScene::cornell_box();
-
-	Camera camera = {{278.0f, 274.0f, 500.0f},
+	Camera camera = {{0.0f, 1.0f, 1.0f},
 					 {1.0f, 0.0f, 0.0f},
 					 {0.0f, 1.0f, 0.0f},
 					 {0.0f, 0.0f, 1.0f},
-					 1.5f};
+					 1.0f};
+#else
+	SimpleScene test_scene = SimpleScene::cornell_box();
 
+	Camera camera = {{278.0f, 274.0f, 800.0f},
+					 {1.0f, 0.0f, 0.0f},
+					 {0.0f, 1.0f, 0.0f},
+					 {0.0f, 0.0f, 1.0f},
+					 1.8f};
+#endif
+	
 	use_shader_program(base_shader_program);
 
 	glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"),   (u32)test_scene.spheres.size());
