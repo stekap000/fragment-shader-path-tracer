@@ -97,21 +97,36 @@ float hash2(vec2 co){
 // 	return hash1(seed*xyz.xy);
 // }
 
-float noise(vec3 xyz, float seed) {
-	return hash2(seed*xyz.xy);
-}
+// float noise(vec3 xyz, float seed) {
+// 	return hash2(seed*xyz.xy);
+// }
 
 // float noise(vec3 xyz, float seed) {
 // 	xyz *= vec3(width, height, 1);
 // 	return gold_noise(xyz.xy, seed);
 // }
 
-float rand_minus_one_to_one(vec3 xyz, float seed) {
-	return -1 + 2*noise(xyz, seed);
+float random_0_to_1(vec3 xyz, float seed) {
+	return hash2(seed*xyz.xy);
 }
 
-float rand_in_range(vec3 xyz, float seed, float min, float max) {
-	return min + (max - min)*noise(xyz, seed);
+float random_minus_1_to_1(vec3 xyz, float seed) {
+	return -1 + 2*hash2(seed*xyz.xy);
+}
+
+float random_in_range(vec3 xyz, float seed, float min, float max) {
+	return min + (max - min)*hash2(seed*xyz.xy);
+}
+
+vec3 random_unit_vector(vec3 xyz, float seed) {
+	return vec3(random_minus_1_to_1(xyz, seed + 0.1),
+				random_minus_1_to_1(xyz, seed + 0.2),
+				random_minus_1_to_1(xyz, seed + 0.3));
+}
+
+vec3 random_unit_vector_in_hemisphere(vec3 xyz, float seed, vec3 normal) {
+	vec3 unit = random_unit_vector(xyz, seed);
+	return sign(dot(unit, normal)) * unit;
 }
 
 void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
@@ -234,14 +249,14 @@ void main() {
 	int triangle_index = -1;
 	
 	int ray_count = 4;
-	int jump_count = 8;
+	int jump_count = 4;
 	for(int ray_index = 0; ray_index < ray_count; ++ray_index) {
 		color = vec3(0.0, 0.0, 0.0);
 		attenuation = vec3(1.0, 1.0, 1.0);
 
 		// Currently, random pixel position change is within range (-pixel_dimension, pixel_dimension).
 		// If needed, we can experiment with lower range to make rays more focused.
-		vec3 pixel_p_perturbed = pixel_p + 0.5*rand_in_range(ray.d, time + 0.1, -pixel_width, pixel_width)*camera.x + 0.5*rand_in_range(ray.d, time + 0.2, -pixel_height, pixel_height)*camera.y;
+		vec3 pixel_p_perturbed = pixel_p + 0.5*random_in_range(ray.d, time + 0.1, -pixel_width, pixel_width)*camera.x + 0.5*random_in_range(ray.d, time + 0.2, -pixel_height, pixel_height)*camera.y;
 
 		ray.p = original_ray.p;
 		ray.d = normalize(pixel_p_perturbed - focus);
@@ -259,10 +274,9 @@ void main() {
 				vec3 normal = normalize(triangles[triangle_index].n);
 				ray.d = reflect(ray.d, normal);
 
-				float x = noise(ray.p, time + 0.1);
-				float y = noise(ray.p, time + 0.2);
-				float z = noise(ray.p, time + 0.3);
-				ray.d = normalize(ray.d + materials[triangles[triangle_index].mat_index].scatter * normalize(vec3(x, y, z)));
+				ray.d = mix(ray.d,
+							random_unit_vector_in_hemisphere(ray.p, time, normal),
+							materials[triangles[triangle_index].mat_index].scatter);
 
 				if(dot(ray.d, normal) < 0) {
 					ray.p -= BIAS*normal;
@@ -280,11 +294,10 @@ void main() {
 				vec3 normal = normalize(ray.p - spheres[sphere_index].p);
 				ray.d = reflect(ray.d, normal);
 
-				float x = noise(ray.p, time + 0.1);
-				float y = noise(ray.p, time + 0.2);
-				float z = noise(ray.p, time + 0.3);
-				ray.d = normalize(ray.d + materials[spheres[sphere_index].mat_index].scatter * normalize(vec3(x, y, z)));
-
+				ray.d = mix(ray.d,
+							random_unit_vector_in_hemisphere(ray.p, time, normal),
+							materials[spheres[sphere_index].mat_index].scatter);
+				
 				if(dot(ray.d, normal) < 0) {
 					ray.p -= BIAS*normal;
 				}
@@ -307,9 +320,4 @@ void main() {
 	}
 
 	fragment_color /= ray_count;
-
-	// NOTE(stekap): For testing noise functions.
-	// fragment_color = vec4(noise(vec3(position.x, position.y, 0), time + 0.1),
-	// 					  noise(vec3(position.x, position.y, 0), time + 0.2),
-	// 					  noise(vec3(position.x, position.y, 0), time + 0.3), 1.0);
 }
