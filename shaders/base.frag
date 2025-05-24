@@ -253,7 +253,7 @@ void main() {
 	float t = MAX_FLOAT;
 	int sphere_index = -1;
 	int triangle_index = -1;
-	
+
 	int ray_count = 4;
 	int jump_count = 4;
 	for(int ray_index = 0; ray_index < ray_count; ++ray_index) {

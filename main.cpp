@@ -6,6 +6,7 @@
 // #include <glm/gtc/type_ptr.hpp>
 
 #include <iostream>
+#include <fstream>
 #include <cassert>
 #include <string>
 #include <chrono>
@@ -14,6 +15,7 @@
 #define __ignore__(x)((void)(x))
 #define Internal static
 
+typedef unsigned char u8;
 typedef unsigned int u32;
 typedef unsigned long long int u64;
 typedef int s32;
@@ -399,7 +401,7 @@ struct SimpleScene {
 	}
 };
 
-int main() {
+int main(int arg_count, char** args) {
 	GLFWwindow* window = Setup::window();
 	
 	if(!window) {
@@ -479,3 +481,38 @@ int main() {
 	glfwTerminate();
 	return 0;
 }
+
+// NOTE(stekap): Idea for reducing the GPU SIMT problems (might not work at all).
+//     Breaking the shader into a batch compute.
+// 
+//     We have two loops:
+//         Outer one is for repeating computation for the same pixel with a perturbed camera ray.
+//         Inner one is for tracing rays.
+//     
+//     Possible ways:
+//         1. Remove outer loop from the shader and replace it with a loop on the host. Inner loop stays in the
+//            shader along with the code that is right above it that perturbs the direction.
+//            In this case, every shader batch must output the color matrix. This color matrix must be an input for
+//            the next batch. Therefore, batch would take the color matrix, and each fragment shader call would add
+//            its calculated value to this color matrix. When all batches are done, host can either read and modify
+//            this matrix by dividing it with the number of outer loop iterations, or it can issue a call to a special
+//            shader that does this and immediatelly outputs the image to the default framebuffer.
+//            
+//            The problem with this approach is that it still doesn't fully scale. It allows us to scale the number of
+//            samples per pixel, since we can just generate arbitrary number of shader batches, so that part will not stall
+//            the GPU SIMT. However, since the whole inner loop is still in the shader and it defines the tracer depth
+//            it can easily stall the SIMT if we say that the depth is 1024 or something similar. Therefore, this approach
+//            is only valid if we know that the tracing depth will not be enormous.
+//            
+//         2. In this approach, we have the outer loop on the host, just like in the first approach. But, inner loop is also
+//            broken into pieces of some predefined size like X = 8/16/32 iterations. In this case, one shader batch calculates
+//            X bounces for rays and saves the current state into a texture. When the next batch is called, it samples this
+//            texture to get information about the ray state and uses that as a starting point for rays. Therefore, this ray
+//            state texture would need to contain all the information necessary for rays to continue the previous tracing, like
+//            the new ray starting point, its direction, ... (basically, the ray structure). Additionally, we would also need to
+//            save the color, attenuation and whatever (all of these parameters will change in time as tracer handles more things).
+//            Taking all of this into account, on the host side we would have the outer loop with 'ray_count' iterations.
+//            Inside it, we would have a loop that has 'jump_count/X' iterations that is responsible for batch computing
+//            the inner loop.
+//            
+//            With this approach, we have the control over the loop size within the shader.
