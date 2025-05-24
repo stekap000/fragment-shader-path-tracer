@@ -39,6 +39,8 @@ struct Camera {
 struct Ray {
 	vec3 p;
 	vec3 d;
+	vec3 color;
+	vec3 attenuation;
 };
 
 struct Material {
@@ -242,13 +244,12 @@ void main() {
 	
 	//vec3 background_color = vec3(0.4, 0.6, 0.8);
 	vec3 background_color = vec3(0.9, 0.9, 0.9);
-	vec3 color = vec3(0.0, 0.0, 0.0);
-	vec3 attenuation = vec3(1.0, 1.0, 1.0);
 
 	vec3 pixel_p = camera.p + position.x*camera.x + position.y*camera.y;
 	vec3 focus   = camera.p + camera.f*camera.z;
 	
-	Ray original_ray = {focus, normalize(pixel_p - focus)};
+	Ray original_ray = {focus, normalize(pixel_p - focus), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
+
 	Ray ray = original_ray;
 	float t = MAX_FLOAT;
 	int sphere_index = -1;
@@ -257,14 +258,11 @@ void main() {
 	int ray_count = 4;
 	int jump_count = 4;
 	for(int ray_index = 0; ray_index < ray_count; ++ray_index) {
-		color = vec3(0.0, 0.0, 0.0);
-		attenuation = vec3(1.0, 1.0, 1.0);
-
 		// Currently, random pixel position change is within range (-pixel_dimension, pixel_dimension).
 		// If needed, we can experiment with lower range to make rays more focused.
 		vec3 pixel_p_perturbed = pixel_p + 0.5*random_in_range(ray.d, time + 0.1, -pixel_width, pixel_width)*camera.x + 0.5*random_in_range(ray.d, time + 0.2, -pixel_height, pixel_height)*camera.y;
 
-		ray.p = original_ray.p;
+		ray = original_ray;
 		ray.d = normalize(pixel_p_perturbed - focus);
 		
 		for(int jump_index = 0; jump_index < jump_count; ++jump_index) {
@@ -292,8 +290,8 @@ void main() {
 				}
 
 				// TODO(stekap): Cosine term.
-				color += attenuation * materials[triangles[triangle_index].mat_index].emittance;
-				attenuation *= materials[triangles[triangle_index].mat_index].reflectance;
+				ray.color += ray.attenuation * materials[triangles[triangle_index].mat_index].emittance;
+				ray.attenuation *= materials[triangles[triangle_index].mat_index].reflectance;
 			}
 			else if(sphere_index >= 0) {
 				ray.p = ray.p + t*ray.d;
@@ -312,17 +310,17 @@ void main() {
 				}
 
 				// TODO(stekap): Cosine term.
-				color += attenuation * materials[spheres[sphere_index].mat_index].emittance;
-				attenuation *= materials[spheres[sphere_index].mat_index].reflectance;
+				ray.color += ray.attenuation * materials[spheres[sphere_index].mat_index].emittance;
+				ray.attenuation *= materials[spheres[sphere_index].mat_index].reflectance;
 			}
 			else {
 				// Add because the sky behaves like emitter.
-				color += background_color;
+				ray.color += background_color;
 				break;
 			}
 		}
 
-		fragment_color += vec4(color * attenuation, 1.0);
+		fragment_color += vec4(ray.color * ray.attenuation, 1.0);
 	}
 
 	fragment_color /= ray_count;
