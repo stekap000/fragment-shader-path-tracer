@@ -54,10 +54,19 @@ layout (pixel_center_integer) in vec4 gl_FragCoord;
 
 out vec4 fragment_color;
 
-uniform float time;
+#define EXECUTION_TYPE_INITIALIZE        0
+#define EXECUTION_TYPE_TRACE             1
+#define EXECUTION_TYPE_INCLUDE_RAY_COLOR 2
+#define EXECUTION_TYPE_NORMALIZE_COLOR   3
 
+uniform unsigned int execution_type;
+
+uniform float time;
 uniform float width;
 uniform float height;
+
+uniform unsigned int ray_count;
+uniform unsigned int jump_count;
 uniform unsigned int sphere_count;
 uniform unsigned int triangle_count;
 
@@ -87,8 +96,22 @@ void store_ray(Ray ray) {
 	int Y =     int(gl_FragCoord.y);
 	imageStore(batch_state, ivec2(X+0, Y), vec4(ray.p,           0.0));
 	imageStore(batch_state, ivec2(X+1, Y), vec4(ray.d,           0.0));
-	imageStore(batch_state, ivec2(X+2, Y), vec4(ray.color,       0.0));
+	imageStore(batch_state, ivec2(X+2, Y), vec4(ray.color,       1.0));
 	imageStore(batch_state, ivec2(X+3, Y), vec4(ray.attenuation, 0.0));
+}
+
+layout (rgba32f, binding = 1) uniform image2D final_colors;
+
+vec4 load_color() {
+	int X = int(gl_FragCoord.x);
+	int Y = int(gl_FragCoord.y);
+	return imageLoad(final_colors, ivec2(X, Y));
+}
+
+void store_color(vec4 color) {
+	int X = int(gl_FragCoord.x);
+	int Y = int(gl_FragCoord.y);
+	imageStore(final_colors, ivec2(X, Y), color);
 }
 
 // TODO(stekap): Light sources should somehow be grouped together when we start using direct light sampling.
@@ -267,40 +290,31 @@ void intersect_triangles(inout Ray ray, inout int triangle_index, inout float t)
 	}
 }
 
-// pixel_p : position
-// pixel_p : used to construct 'original_ray' and 'pixel_p_perturbed'
-
 void main() {
 	float pixel_width = 2.0/width;
 	float pixel_height = 2.0/height;
 	float pixel_lower_radius = min(pixel_width, pixel_height);
-	
-	vec3 background_color = vec3(0.9, 0.9, 0.9);
-	
-	vec3 pixel_p = camera.p + position.x*camera.x + position.y*camera.y;
-	vec3 focus   = camera.p + camera.f*camera.z;
-	
-	Ray original_ray = {focus, normalize(pixel_p - focus), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
 
-	Ray ray = original_ray;
-	float t = MAX_FLOAT;
-	int sphere_index = -1;
-	int triangle_index = -1;
-
-	int ray_count = 4;
-	int jump_count = 4;
-	for(int ray_index = 0; ray_index < ray_count; ++ray_index) {
-		// Currently, random pixel position change is within range (-pixel_dimension, pixel_dimension).
-		// If needed, we can experiment with lower range to make rays more focused.
-		vec3 pixel_p_perturbed = pixel_p + 0.5*random_in_range(ray.d, time + 0.1, -pixel_width, pixel_width)*camera.x + 0.5*random_in_range(ray.d, time + 0.2, -pixel_height, pixel_height)*camera.y;
-
-		ray = original_ray;
-		ray.d = normalize(pixel_p_perturbed - focus);
+	if(execution_type == EXECUTION_TYPE_INITIALIZE) {
+		vec3 pixel_p = camera.p + position.x*camera.x + position.y*camera.y;
+		vec3 focus   = camera.p + camera.f*camera.z;
 		
+		Ray ray = {focus, normalize(pixel_p - focus), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
+
+		store_ray(ray);
+
+		return;
+	}
+
+	if(execution_type == EXECUTION_TYPE_TRACE) {
+		vec3 background_color = vec3(0.9, 0.9, 0.9);
+
+		Ray ray = load_ray();
+	
 		for(int jump_index = 0; jump_index < jump_count; ++jump_index) {
-			t = MAX_FLOAT;
-			sphere_index = -1;
-			triangle_index = -1;
+			float t = MAX_FLOAT;
+			int sphere_index = -1;
+			int triangle_index = -1;
 
 			intersect_spheres(ray, sphere_index, t);
 			intersect_triangles(ray, triangle_index, t);
@@ -352,8 +366,23 @@ void main() {
 			}
 		}
 
-		fragment_color += vec4(ray.color * ray.attenuation, 1.0);
+		store_ray(ray);
+
+		return;
 	}
 
-	fragment_color /= ray_count;
+	if(execution_type == EXECUTION_TYPE_INCLUDE_RAY_COLOR) {
+		store_color(load_color() + vec4(load_ray().color, 1.0));
+
+		return;
+	}
+
+	if(execution_type == EXECUTION_TYPE_NORMALIZE_COLOR) {
+		store_color(load_color() / float(ray_count));
+
+		// TODO(stekap): For testing. Remove later.
+		fragment_color = load_color();
+
+		return;
+	}
 }
