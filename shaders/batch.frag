@@ -80,7 +80,7 @@ uniform Camera camera;
 // . . . . | . . . . | . . . . |
 // . . . . | . . . . | . . . . |
 // (0, 0) is at the bottom left.
-layout (rgba32f, binding = 0) uniform image2D batch_state;
+layout (rgba32f, binding = 0) coherent uniform image2D batch_state;
 
 Ray load_ray() {
 	int X = 4 * int(gl_FragCoord.x);
@@ -100,7 +100,7 @@ void store_ray(Ray ray) {
 	imageStore(batch_state, ivec2(X+3, Y), vec4(ray.attenuation, 0.0));
 }
 
-layout (rgba32f, binding = 1) uniform image2D final_colors;
+layout (rgba32f, binding = 1) coherent uniform image2D final_colors;
 
 vec4 load_color() {
 	int X = int(gl_FragCoord.x);
@@ -300,7 +300,7 @@ void main() {
 		vec3 focus   = camera.p + camera.f*camera.z;
 		
 		Ray ray = {focus, normalize(pixel_p - focus), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
-
+		
 		store_ray(ray);
 
 		return;
@@ -310,7 +310,7 @@ void main() {
 		vec3 background_color = vec3(0.9, 0.9, 0.9);
 
 		Ray ray = load_ray();
-	
+
 		for(int jump_index = 0; jump_index < jump_count; ++jump_index) {
 			float t = MAX_FLOAT;
 			int sphere_index = -1;
@@ -361,7 +361,8 @@ void main() {
 			}
 			else {
 				// Add because the sky behaves like emitter.
-				ray.color += background_color;
+				ray.color += ray.attenuation * background_color;
+
 				break;
 			}
 		}
@@ -372,7 +373,8 @@ void main() {
 	}
 
 	if(execution_type == EXECUTION_TYPE_INCLUDE_RAY_COLOR) {
-		store_color(load_color() + vec4(load_ray().color, 1.0));
+		Ray ray = load_ray();
+		store_color(load_color() + vec4(ray.color * ray.attenuation, 1.0));
 
 		return;
 	}
@@ -380,7 +382,8 @@ void main() {
 	if(execution_type == EXECUTION_TYPE_NORMALIZE_COLOR) {
 		store_color(load_color() / float(ray_count));
 
-		// TODO(stekap): For testing. Remove later.
+		// TODO(stekap): This is for testing. The actual idea is to output the final
+		//               color through image2D and read it on the cpu.
 		fragment_color = load_color();
 
 		return;
