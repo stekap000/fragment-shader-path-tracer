@@ -38,10 +38,19 @@ struct Camera {
 
 struct Ray {
 	vec3 p;
+	// NOTE(stekap): We use zero vector for direction to denote the invalid vector.
 	vec3 d;
 	vec3 color;
 	vec3 attenuation;
 };
+
+bool ray_invalid(Ray ray) {
+	return ray.d == vec3(0.0, 0.0, 0.0);
+}
+
+void ray_invalidate(inout Ray ray) {
+	ray.d = vec3(0.0, 0.0, 0.0);
+}
 
 struct Material {
 	vec3 reflectance;
@@ -66,7 +75,7 @@ uniform float width;
 uniform float height;
 
 uniform unsigned int ray_count;
-uniform unsigned int jump_count;
+uniform unsigned int batch_jump_count;
 uniform unsigned int sphere_count;
 uniform unsigned int triangle_count;
 
@@ -82,7 +91,7 @@ uniform Camera camera;
 // (0, 0) is at the bottom left.
 layout (rgba32f, binding = 0) coherent uniform image2D batch_state;
 
-Ray load_ray() {
+Ray ray_load() {
 	int X = 4 * int(gl_FragCoord.x);
 	int Y =     int(gl_FragCoord.y);
 	return Ray(imageLoad(batch_state, ivec2(X+0, Y)).xyz,
@@ -91,7 +100,7 @@ Ray load_ray() {
 			   imageLoad(batch_state, ivec2(X+3, Y)).xyz);
 }
 
-void store_ray(Ray ray) {
+void ray_store(Ray ray) {
 	int X = 4 * int(gl_FragCoord.x);
 	int Y =     int(gl_FragCoord.y);
 	imageStore(batch_state, ivec2(X+0, Y), vec4(ray.p,           0.0));
@@ -102,13 +111,13 @@ void store_ray(Ray ray) {
 
 layout (rgba32f, binding = 1) coherent uniform image2D final_colors;
 
-vec4 load_color() {
+vec4 color_load() {
 	int X = int(gl_FragCoord.x);
 	int Y = int(gl_FragCoord.y);
 	return imageLoad(final_colors, ivec2(X, Y));
 }
 
-void store_color(vec4 color) {
+void color_store(vec4 color) {
 	int X = int(gl_FragCoord.x);
 	int Y = int(gl_FragCoord.y);
 	imageStore(final_colors, ivec2(X, Y), color);
@@ -298,10 +307,16 @@ void main() {
 	if(execution_type == EXECUTION_TYPE_INITIALIZE) {
 		vec3 pixel_p = camera.p + position.x*camera.x + position.y*camera.y;
 		vec3 focus   = camera.p + camera.f*camera.z;
+
+		// NOTE(stekap): Something for generating random perturbation. Can be any vec3
+		//               that is different for different samples of the same pixel.
+		vec3 time_vec = vec3(time, time, time);
+
+		vec3 pixel_p_perturbed = pixel_p + 0.5*random_in_range(time_vec, time + 0.1, -pixel_width, pixel_width)*camera.x + 0.5*random_in_range(time_vec, time + 0.2, -pixel_height, pixel_height)*camera.y;
 		
-		Ray ray = {focus, normalize(pixel_p - focus), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
+		Ray ray = {focus, normalize(pixel_p_perturbed - focus), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
 		
-		store_ray(ray);
+		ray_store(ray);
 
 		return;
 	}
@@ -309,9 +324,13 @@ void main() {
 	if(execution_type == EXECUTION_TYPE_TRACE) {
 		vec3 background_color = vec3(0.9, 0.9, 0.9);
 
-		Ray ray = load_ray();
+		Ray ray = ray_load();
 
-		for(int jump_index = 0; jump_index < jump_count; ++jump_index) {
+		if(ray_invalid(ray)) {
+			return;
+		}
+
+		for(int jump_index = 0; jump_index < batch_jump_count; ++jump_index) {
 			float t = MAX_FLOAT;
 			int sphere_index = -1;
 			int triangle_index = -1;
@@ -335,8 +354,12 @@ void main() {
 					ray.p += BIAS*normal;
 				}
 
-				// TODO(stekap): Cosine term.
+				// TODO(stekap): Cosine term, inverse square law....
+
+				// Collect emittance.
 				ray.color += ray.attenuation * materials[triangles[triangle_index].mat_index].emittance;
+
+				// Collect attenuation.
 				ray.attenuation *= materials[triangles[triangle_index].mat_index].reflectance;
 			}
 			else if(sphere_index >= 0) {
@@ -355,36 +378,40 @@ void main() {
 					ray.p += BIAS*normal;
 				}
 
-				// TODO(stekap): Cosine term.
+				// TODO(stekap): Cosine term, inverse square law....
+
+				// Collect emittance.
 				ray.color += ray.attenuation * materials[spheres[sphere_index].mat_index].emittance;
+				// Collect attenuation.
 				ray.attenuation *= materials[spheres[sphere_index].mat_index].reflectance;
 			}
 			else {
 				// Add because the sky behaves like emitter.
 				ray.color += ray.attenuation * background_color;
+				ray_invalidate(ray);
 
 				break;
 			}
 		}
 
-		store_ray(ray);
+		ray_store(ray);
 
 		return;
 	}
 
 	if(execution_type == EXECUTION_TYPE_INCLUDE_RAY_COLOR) {
-		Ray ray = load_ray();
-		store_color(load_color() + vec4(ray.color * ray.attenuation, 1.0));
+		Ray ray = ray_load();
+		color_store(color_load() + vec4(ray.attenuation * ray.color, 1.0));
 
 		return;
 	}
 
 	if(execution_type == EXECUTION_TYPE_NORMALIZE_COLOR) {
-		store_color(load_color() / float(ray_count));
+		color_store(color_load() / ray_count);
 
 		// NOTE(stekap): We keep this here so that we can see the result when using
 		//               batching in real time.
-		fragment_color = load_color();
+		fragment_color = color_load();
 
 		return;
 	}

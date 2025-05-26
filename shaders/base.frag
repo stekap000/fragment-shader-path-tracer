@@ -315,7 +315,7 @@ void main() {
 			}
 			else {
 				// Add because the sky behaves like emitter.
-				ray.color += background_color;
+				ray.color += ray.attenuation * background_color;
 				break;
 			}
 		}

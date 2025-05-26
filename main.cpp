@@ -417,9 +417,6 @@ void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
 }
 
 void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batch_progrm) {
-	// TODO(stekap): Image is too bright for something like
-	//               ray_count = 128 and total_jump_count = 128. Find the problem
-	//               (probably in shader).
 	u32 ray_count = 8;
 	u32 total_jump_count = 8;
 	u32 batch_jump_count = 8;
@@ -434,7 +431,7 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batc
 	glUniform1f(glGetUniformLocation(batch_program, "height"), (f32)height);
 	
 	glUniform1ui(glGetUniformLocation(batch_program, "ray_count"), ray_count);
-	glUniform1ui(glGetUniformLocation(batch_program, "jump_count"), batch_jump_count);
+	glUniform1ui(glGetUniformLocation(batch_program, "batch_jump_count"), batch_jump_count);
 	glUniform1ui(glGetUniformLocation(batch_program, "sphere_count"), (u32)scene.spheres.size());
 	glUniform1ui(glGetUniformLocation(batch_program, "triangle_count"), (u32)scene.triangles.size());
 		
@@ -594,19 +591,17 @@ int main(int arg_count, char** args) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 		}
 
-		// glUniform1f(time_uniform_location, (f32)glfwGetTime());
-		// glUniform1f(width_uniform_location, (f32)width);
-		// glUniform1f(height_uniform_location, (f32)height);
+		glUniform1f(time_uniform_location, (f32)glfwGetTime());
+		glUniform1f(width_uniform_location, (f32)width);
+		glUniform1f(height_uniform_location, (f32)height);
 			
-		// glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		// glClear(GL_COLOR_BUFFER_BIT);
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
 
-		// batch_test(window, test_scene, camera, batch_program);
+		use_shader_program(base_shader_program);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
 			
-		// use_shader_program(base_shader_program);
-		// glDrawArrays(GL_TRIANGLES, 0, 6);
-			
-		// glfwSwapBuffers(window);
+		glfwSwapBuffers(window);
 		glfwPollEvents();
 
 		time_end = glfwGetTime();
