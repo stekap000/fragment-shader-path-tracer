@@ -382,8 +382,8 @@ void main() {
 	if(execution_type == EXECUTION_TYPE_NORMALIZE_COLOR) {
 		store_color(load_color() / float(ray_count));
 
-		// TODO(stekap): This is for testing. The actual idea is to output the final
-		//               color through image2D and read it on the cpu.
+		// NOTE(stekap): We keep this here so that we can see the result when using
+		//               batching in real time.
 		fragment_color = load_color();
 
 		return;

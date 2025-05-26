@@ -411,12 +411,18 @@ enum : u32 {
 void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
 	glUniform1ui(execution_type_uniform_location, execution_type);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
+	// TODO(stekap): Think about this barrier and glFinish further.
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	glFinish();
 }
 
-void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera) {
-	u32 ray_count = 64;
-	u32 jump_count = 32;
-	u32 batch_size = 8;
+void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batch_progrm) {
+	// TODO(stekap): Image is too bright for something like
+	//               ray_count = 128 and total_jump_count = 128. Find the problem
+	//               (probably in shader).
+	u32 ray_count = 8;
+	u32 total_jump_count = 8;
+	u32 batch_jump_count = 8;
 	
 	u32 batch_program = create_shader_program("shaders/batch.vert", "shaders/batch.frag");
 	use_shader_program(batch_program);
@@ -428,7 +434,7 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera) {
 	glUniform1f(glGetUniformLocation(batch_program, "height"), (f32)height);
 	
 	glUniform1ui(glGetUniformLocation(batch_program, "ray_count"), ray_count);
-	glUniform1ui(glGetUniformLocation(batch_program, "jump_count"), jump_count);
+	glUniform1ui(glGetUniformLocation(batch_program, "jump_count"), batch_jump_count);
 	glUniform1ui(glGetUniformLocation(batch_program, "sphere_count"), (u32)scene.spheres.size());
 	glUniform1ui(glGetUniformLocation(batch_program, "triangle_count"), (u32)scene.triangles.size());
 		
@@ -449,8 +455,6 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera) {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4*width, height, 0, GL_RGBA, GL_FLOAT, NULL);
 	glBindImageTexture(0, batch_state, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
-	glUniform1ui(glGetUniformLocation(batch_program, "batch_state"), 0);
-
 	u32 final_colors;
 	glGenTextures(1, &final_colors);
 	glActiveTexture(GL_TEXTURE0 + 1);
@@ -465,46 +469,41 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera) {
 	glUniform1ui(glGetUniformLocation(batch_program, "batch_state"), 0);
 	glUniform1ui(glGetUniformLocation(batch_program, "final_colors"), 1);
 
-	// TODO(stekap): Test if memory barrier is needed between different calls.
+	// int batch_done = 0;
 	for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
-		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
 		glUniform1f(time_uniform_location, (f32)glfwGetTime());
+		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
 		
-		for(u32 batch_index = 0; batch_index < (jump_count / batch_size); ++batch_index) {
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		for(u32 batch_index = 0; batch_index < (total_jump_count / batch_jump_count); ++batch_index) {
 			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_TRACE);
+			//++batch_done;
 		}
 
-		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
+		//std::cout << "\r" << (f32)batch_done / (f32)(ray_count*total_jump_count) << "%";
 	}
 
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_NORMALIZE_COLOR);
 
 	std::cout << "dispatch DONE" << std::endl;
 
-	std::vector<float> pixels(width*height);
+	std::vector<u8> pixels(4*width*height);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 	
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	std::cout << "glGetTexImage DONE" << std::endl;
 	
-	// glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, pixels.data());
-	
-	// std::cout << "glGetTexImage DONE" << std::endl;
-	
-	// std::ofstream out_ppm;
-	// out_ppm.open("test.ppm", std::ios_base::binary);
-	// out_ppm << "P6\n" << width << " " << height << "\n255\n";
+	std::ofstream out_ppm;
+	out_ppm.open("test.ppm", std::ios_base::binary);
+	out_ppm << "P6\n" << width << " " << height << "\n255\n";
 
-	// for(int y = height - 1; y >= 0; --y) {
-		
-	// 	for(int x = 0; x < width; ++x) {
-	// 		int index = 4*(y*width + x);
-	// 		out_ppm << (u32)(pixels[index+0]*255);
-	// 		out_ppm << (u32)(pixels[index+1]*255);
-	// 		out_ppm << (u32)(pixels[index+2]*255);
-	// 	}
-	// }
+	for(int y = height - 1; y >= 0; --y) {
+		for(int x = 0; x < width; ++x) {
+			int index = 4*(y*width + x);
+			out_ppm << pixels[index+0];
+			out_ppm << pixels[index+1];
+			out_ppm << pixels[index+2];
+		}
+	}
 }
 
 int main(int arg_count, char** args) {
@@ -541,7 +540,7 @@ int main(int arg_count, char** args) {
 					 1.8f};
 #endif
 
-	batch_test(window, test_scene, camera);
+	batch_test(window, test_scene, camera, 0);
 	return 0;
 	
 	use_shader_program(base_shader_program);
@@ -557,6 +556,32 @@ int main(int arg_count, char** args) {
 
 	double time_start;
 	double time_end;
+
+	// NOTE(stekap): This is for testing batch shader in real time.
+	// u32 batch_state;
+	// glGenTextures(1, &batch_state);
+	// glActiveTexture(GL_TEXTURE0);
+	// glBindTexture(GL_TEXTURE_2D, batch_state);
+	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	// glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4*width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+	// glBindImageTexture(0, batch_state, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+	// u32 final_colors;
+	// glGenTextures(1, &final_colors);
+	// glActiveTexture(GL_TEXTURE0 + 1);
+	// glBindTexture(GL_TEXTURE_2D, final_colors);
+	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	// glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+	// glBindImageTexture(1, final_colors, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+	// u32 batch_program = create_shader_program("shaders/batch.vert", "shaders/batch.frag");
+	// use_shader_program(batch_program);
 	
 	time_start = glfwGetTime();
 	while(!glfwWindowShouldClose(window))
@@ -569,17 +594,19 @@ int main(int arg_count, char** args) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 		}
 
-		glUniform1f(time_uniform_location, (f32)glfwGetTime());
-		glUniform1f(width_uniform_location, (f32)width);
-		glUniform1f(height_uniform_location, (f32)height);
+		// glUniform1f(time_uniform_location, (f32)glfwGetTime());
+		// glUniform1f(width_uniform_location, (f32)width);
+		// glUniform1f(height_uniform_location, (f32)height);
 			
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+		// glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		// glClear(GL_COLOR_BUFFER_BIT);
+
+		// batch_test(window, test_scene, camera, batch_program);
 			
-		use_shader_program(base_shader_program);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+		// use_shader_program(base_shader_program);
+		// glDrawArrays(GL_TRIANGLES, 0, 6);
 			
-		glfwSwapBuffers(window);
+		// glfwSwapBuffers(window);
 		glfwPollEvents();
 
 		time_end = glfwGetTime();
