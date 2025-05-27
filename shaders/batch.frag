@@ -140,51 +140,31 @@ layout (std140, binding = 2) uniform Materials {
 	Material materials[MAX_MATERIAL_COUNT];
 };
 
-// NOTE(stekap): Expects xy to be some larger range of values, for example [0, width] for x coordinate,
-//               instead of just being a float from 0 to 1.
-float gold_noise(vec2 xy, float seed){
-	return fract(tan(distance(xy*1.61803398874989484820459, xy)*seed)*xy.x);
+// NOTE(stekap): Both hashes below seem decent. Distribution is geared towards the middle of the
+//               [0, 1] range. First one seems to have worse distribution than the second but is a bit faster.
+//               Constructed using ideas and tool from "https://thebookofshaders.com/10/".
+//               First constructed is fract(tan(x)*1000.0).
+//               Second constructed is smoothstep(0.0, 1.0, fract(tan(x)*1000.0)).
+//               Then they are adjusted to depend on the 3d point.
+
+float hash(vec3 xyz) {
+	return fract(tan(dot(xyz, vec3(12.9898, 78.233, 1.61803398)))*1000.0);
 }
 
-float hash1( vec2 a )
-{
-    return fract( sin( a.x * 3433.8 + a.y * 3843.98 ) * 45933.8 );
-}
-
-// NOTE(stekap): This seems to have speed like gold_noise and hash1. Better distribution than hash1.
-//               Similar distribution like gold_noise. No problems like blue dots that gold_noise produces.
-float hash2(vec2 co){
-    return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
-}
-
-// float noise(vec3 xyz, float seed){
-// 	xyz *= vec3(width, height, 0);
-// 	return fract(tan(distance(xyz*1.61803398874989484820459, xyz)*seed)*xyz.x);
-// }
-
-// float noise(vec3 xyz, float seed) {
-// 	return hash1(seed*xyz.xy);
-// }
-
-// float noise(vec3 xyz, float seed) {
-// 	return hash2(seed*xyz.xy);
-// }
-
-// float noise(vec3 xyz, float seed) {
-// 	xyz *= vec3(width, height, 1);
-// 	return gold_noise(xyz.xy, seed);
+// float hash(vec3 xyz) {
+// 	return smoothstep(0.0, 1.0, fract(tan(dot(xyz, vec3(12.9898, 78.233, 1.61803398)))*1000.000));
 // }
 
 float random_0_to_1(vec3 xyz, float seed) {
-	return hash2(seed*xyz.xy);
+	return hash(seed*xyz);
 }
 
 float random_minus_1_to_1(vec3 xyz, float seed) {
-	return -1 + 2*hash2(seed*xyz.xy);
+	return -1 + 2*hash(seed*xyz);
 }
 
 float random_in_range(vec3 xyz, float seed, float min, float max) {
-	return min + (max - min)*hash2(seed*xyz.xy);
+	return min + (max - min)*hash(seed*xyz);
 }
 
 vec3 random_unit_vector(vec3 xyz, float seed) {

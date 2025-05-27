@@ -24,7 +24,7 @@ typedef long long int s64;
 typedef float f32;
 typedef double f64;
 
-// NOTE(stekap): Keep track of there global variable so that we don't need to callback
+// NOTE(stekap): Keep track of these global variables so that we don't need to callback
 //               glfwGetWindowSize in order to retrieve them from window.
 Internal int width = 1000;
 Internal int height = 1000;
@@ -419,7 +419,7 @@ Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_
 void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batch_progrm) {
 	u32 ray_count = 256;
 	u32 ray_jump_count = 256;
-	u32 batch_jump_count = 64;
+	u32 batch_jump_count = 128;
 	
 	u32 batch_count = (ray_jump_count / batch_jump_count);
 
@@ -572,32 +572,6 @@ int main(int arg_count, char** args) {
 	double time_start;
 	double time_end;
 
-	// NOTE(stekap): This is for testing batch shader in real time.
-	// u32 batch_state;
-	// glGenTextures(1, &batch_state);
-	// glActiveTexture(GL_TEXTURE0);
-	// glBindTexture(GL_TEXTURE_2D, batch_state);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4*width, height, 0, GL_RGBA, GL_FLOAT, NULL);
-	// glBindImageTexture(0, batch_state, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-
-	// u32 final_colors;
-	// glGenTextures(1, &final_colors);
-	// glActiveTexture(GL_TEXTURE0 + 1);
-	// glBindTexture(GL_TEXTURE_2D, final_colors);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	// glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
-	// glBindImageTexture(1, final_colors, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-
-	// u32 batch_program = create_shader_program("shaders/batch.vert", "shaders/batch.frag");
-	// use_shader_program(batch_program);
-	
 	time_start = glfwGetTime();
 	while(!glfwWindowShouldClose(window))
 	{
@@ -630,41 +604,3 @@ int main(int arg_count, char** args) {
 	glfwTerminate();
 	return 0;
 }
-
-// NOTE(stekap): Idea for reducing the GPU SIMT problems (might not work at all).
-//     Breaking the shader into a batch compute.
-// 
-//     We have two loops:
-//         Outer one is for repeating computation for the same pixel with a perturbed camera ray.
-//         Inner one is for tracing rays.
-//     
-//     Possible ways:
-//         1. Remove outer loop from the shader and replace it with a loop on the host. Inner loop stays in the
-//            shader along with the code that is right above it that perturbs the direction.
-//            In this case, every shader batch must output the color matrix. This color matrix must be an input for
-//            the next batch. Therefore, batch would take the color matrix, and each fragment shader call would add
-//            its calculated value to this color matrix. When all batches are done, host can either read and modify
-//            this matrix by dividing it with the number of outer loop iterations, or it can issue a call to a special
-//            shader that does this and immediatelly outputs the image to the default framebuffer.
-//            
-//            The problem with this approach is that it still doesn't fully scale. It allows us to scale the number of
-//            samples per pixel, since we can just generate arbitrary number of shader batches, so that part will not stall
-//            the GPU SIMT. However, since the whole inner loop is still in the shader and it defines the tracer depth
-//            it can easily stall the SIMT if we say that the depth is 1024 or something similar. Therefore, this approach
-//            is only valid if we know that the tracing depth will not be enormous.
-//            
-//         2. In this approach, we have the outer loop on the host, just like in the first approach. But, inner loop is also
-//            broken into pieces of some predefined size like X = 8/16/32 iterations. In this case, one shader batch calculates
-//            X bounces for rays and saves the current state into a texture. When the next batch is called, it samples this
-//            texture to get information about the ray state and uses that as a starting point for rays. Therefore, this ray
-//            state texture would need to contain all the information necessary for rays to continue the previous tracing, like
-//            the new ray starting point, its direction, ... (basically, the ray structure). Additionally, we would also need to
-//            save the color, attenuation and whatever (all of these parameters will change in time as tracer handles more things).
-//            Taking all of this into account, on the host side we would have the outer loop with 'ray_count' iterations.
-//            Inside it, we would have a loop that has 'jump_count/X' iterations that is responsible for batch computing
-//            the inner loop.
-//            
-//            With this approach, we have the control over the loop size within the shader.
-
-
-
