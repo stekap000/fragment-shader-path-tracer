@@ -68,6 +68,8 @@ out vec4 fragment_color;
 #define EXECUTION_TYPE_INCLUDE_RAY_COLOR 2
 
 uniform unsigned int execution_type;
+// NOTE(stekap): This is here to allow us to properly scale image in real time during generation.
+uniform unsigned int processed_ray_count;
 
 uniform float time;
 uniform float width;
@@ -400,9 +402,12 @@ void main() {
 
 	if(execution_type == EXECUTION_TYPE_INCLUDE_RAY_COLOR) {
 		Ray ray = ray_load();
+
 		vec4 color = color_load() + vec4((ray.attenuation * ray.color) / ray_count, 1.0);
 		color_store(color);
-		fragment_color = color;
+
+		// NOTE(stekap): This allows us to properly show image generation in real time.
+		fragment_color = vec4((color.xyz*ray_count)/processed_ray_count, 1);
 
 		return;
 	}

@@ -417,9 +417,9 @@ Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_
 }
 
 void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batch_progrm) {
-	u32 ray_count = 128;
-	u32 ray_jump_count = 128;
-	u32 batch_jump_count = 32;
+	u32 ray_count = 256;
+	u32 ray_jump_count = 256;
+	u32 batch_jump_count = 64;
 	
 	u32 batch_count = (ray_jump_count / batch_jump_count);
 
@@ -478,6 +478,8 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batc
 	int jumps_done = 0;
 	double time_start = glfwGetTime();
 	for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
+		glUniform1ui(glGetUniformLocation(batch_program, "processed_ray_count"), ray_index + 1);
+		
 		glUniform1f(time_uniform_location, (f32)glfwGetTime());
 		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
 		
