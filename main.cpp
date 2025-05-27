@@ -6,6 +6,7 @@
 // #include <glm/gtc/type_ptr.hpp>
 
 #include <iostream>
+#include <cstdio>
 #include <fstream>
 #include <cassert>
 #include <string>
@@ -25,8 +26,8 @@ typedef double f64;
 
 // NOTE(stekap): Keep track of there global variable so that we don't need to callback
 //               glfwGetWindowSize in order to retrieve them from window.
-Internal int width = 800;
-Internal int height = 640;
+Internal int width = 1000;
+Internal int height = 1000;
 
 Internal void framebuffer_size_callback(GLFWwindow* window, int new_width, int new_height) {
 	width = new_width;
@@ -408,7 +409,7 @@ enum : u32 {
 	EXECUTION_TYPE_NORMALIZE_COLOR,
 };
 
-void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
+Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
 	glUniform1ui(execution_type_uniform_location, execution_type);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	// TODO(stekap): Think about this barrier and glFinish further.
@@ -417,9 +418,18 @@ void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
 }
 
 void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batch_progrm) {
-	u32 ray_count = 8;
-	u32 total_jump_count = 8;
-	u32 batch_jump_count = 8;
+	u32 ray_count = 128;
+	u32 ray_jump_count = 128;
+	u32 batch_jump_count = 32;
+	
+	u32 batch_count = (ray_jump_count / batch_jump_count);
+
+	std::cout << "----------------------------------------" << std::endl;
+	std::cout << "Ray count              : " << ray_count << std::endl;
+	std::cout << "Batch count            : " << batch_count << std::endl;
+	std::cout << "Ray jump count         : " << ray_jump_count << std::endl;
+	std::cout << "Batch jump count       : " << batch_jump_count << std::endl;
+	std::cout << "----------------------------------------" << std::endl;
 	
 	u32 batch_program = create_shader_program("shaders/batch.vert", "shaders/batch.frag");
 	use_shader_program(batch_program);
@@ -465,29 +475,36 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batc
 
 	glUniform1ui(glGetUniformLocation(batch_program, "batch_state"), 0);
 	glUniform1ui(glGetUniformLocation(batch_program, "final_colors"), 1);
-
-	// int batch_done = 0;
+	
+	int jumps_done = 0;
+	double time_start = glfwGetTime();
 	for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
 		glUniform1f(time_uniform_location, (f32)glfwGetTime());
 		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
 		
-		for(u32 batch_index = 0; batch_index < (total_jump_count / batch_jump_count); ++batch_index) {
+		for(u32 batch_index = 0; batch_index < batch_count; ++batch_index) {
 			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_TRACE);
-			//++batch_done;
+			jumps_done += batch_jump_count;
 		}
 
 		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
-		//std::cout << "\r" << (f32)batch_done / (f32)(ray_count*total_jump_count) << "%";
+		printf("\rPercent done           : %05.2f%%", (f32)jumps_done * 100 / (f32)(ray_count*ray_jump_count));
+		fflush(stdout);
 	}
-
 	dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_NORMALIZE_COLOR);
 
-	std::cout << "dispatch DONE" << std::endl;
+	double total_time = glfwGetTime() - time_start;
+	
+	std::cout << std::endl;
+	std::cout << "----------------------------------------" << std::endl;
+	std::cout << "Total time             : " << total_time << "s" << std::endl;
+	std::cout << "Average time per ray   : " << total_time / (ray_count*width*height) << "s" << std::endl;
+	std::cout << "Average time per pixel : " << total_time / (width*height) << "s" << std::endl;
+	std::cout << "Average time per batch : " << total_time / batch_count << "s" << std::endl;
+	std::cout << "----------------------------------------" << std::endl;
 
 	std::vector<u8> pixels(4*width*height);
 	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-	
-	std::cout << "glGetTexImage DONE" << std::endl;
 	
 	std::ofstream out_ppm;
 	out_ppm.open("test.ppm", std::ios_base::binary);
