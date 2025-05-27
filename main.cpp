@@ -406,7 +406,6 @@ enum : u32 {
 	EXECUTION_TYPE_INITIALIZE,
 	EXECUTION_TYPE_TRACE,
 	EXECUTION_TYPE_INCLUDE_RAY_COLOR,
-	EXECUTION_TYPE_NORMALIZE_COLOR,
 };
 
 Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
@@ -485,13 +484,13 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batc
 		for(u32 batch_index = 0; batch_index < batch_count; ++batch_index) {
 			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_TRACE);
 			jumps_done += batch_jump_count;
+			
 		}
-
 		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
+		glfwSwapBuffers(window);
 		printf("\rPercent done           : %05.2f%%", (f32)jumps_done * 100 / (f32)(ray_count*ray_jump_count));
 		fflush(stdout);
 	}
-	dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_NORMALIZE_COLOR);
 
 	double total_time = glfwGetTime() - time_start;
 	

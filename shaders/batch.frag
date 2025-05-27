@@ -66,7 +66,6 @@ out vec4 fragment_color;
 #define EXECUTION_TYPE_INITIALIZE        0
 #define EXECUTION_TYPE_TRACE             1
 #define EXECUTION_TYPE_INCLUDE_RAY_COLOR 2
-#define EXECUTION_TYPE_NORMALIZE_COLOR   3
 
 uniform unsigned int execution_type;
 
@@ -401,17 +400,9 @@ void main() {
 
 	if(execution_type == EXECUTION_TYPE_INCLUDE_RAY_COLOR) {
 		Ray ray = ray_load();
-		color_store(color_load() + vec4(ray.attenuation * ray.color, 1.0));
-
-		return;
-	}
-
-	if(execution_type == EXECUTION_TYPE_NORMALIZE_COLOR) {
-		color_store(color_load() / ray_count);
-
-		// NOTE(stekap): We keep this here so that we can see the result when using
-		//               batching in real time.
-		fragment_color = color_load();
+		vec4 color = color_load() + vec4((ray.attenuation * ray.color) / ray_count, 1.0);
+		color_store(color);
+		fragment_color = color;
 
 		return;
 	}
