@@ -32,18 +32,44 @@ typedef double f64;
 Internal int width = 1000;
 Internal int height = 1000;
 
-Internal void framebuffer_size_callback(GLFWwindow* window, int new_width, int new_height) {
-	width = new_width;
-	height = new_height;
-	glViewport(0, 0, width, height);
-}
+namespace Log {
+	void batching_configuration(u32 ray_count, u32 batch_count, u32 ray_jump_count, u32 batch_jump_count) {
+		std::cout << "----------------------------------------" << std::endl;
+		std::cout << "Ray count              : " << ray_count << std::endl;
+		std::cout << "Batch count            : " << batch_count << std::endl;
+		std::cout << "Ray jump count         : " << ray_jump_count << std::endl;
+		std::cout << "Batch jump count       : " << batch_jump_count << std::endl;
+		std::cout << "----------------------------------------" << std::endl;
+	}
 
-namespace Setup {
-	Internal GLFWwindow* window() {
+	void measured_timings(double total_time, u32 ray_count, u32 batch_count) {
+		std::cout << "----------------------------------------" << std::endl;
+		std::cout << "Total time             : " << total_time << "s" << std::endl;
+		std::cout << "Average time per ray   : " << total_time / (ray_count*width*height) << "s" << std::endl;
+		std::cout << "Average time per pixel : " << total_time / (width*height) << "s" << std::endl;
+		std::cout << "Average time per batch : " << total_time / batch_count << "s" << std::endl;
+		std::cout << "----------------------------------------" << std::endl;
+	}
+
+	void percent_done(u32 jumps_done, u32 ray_count, u32 ray_jump_count) {
+		printf("\rPercent done           : %05.2f%%", (f32)jumps_done * 100 / (f32)(ray_count*ray_jump_count));
+		fflush(stdout);
+	}
+};
+
+namespace Window {
+	Internal void framebuffer_size_callback(GLFWwindow* window, int new_width, int new_height) {
+		width = new_width;
+		height = new_height;
+		glViewport(0, 0, width, height);
+	}
+
+	Internal GLFWwindow* create(bool visible) {
 		glfwInit();
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+		glfwWindowHint(GLFW_VISIBLE, visible);
 	
 		GLFWwindow* window = glfwCreateWindow(width, height, "FragmentShaderPlayground", NULL, NULL);
 		glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
@@ -67,8 +93,42 @@ namespace Setup {
 
 		return window;
 	}
+};
 
-	Internal void tracer_rectangle() {
+namespace IO {
+	Internal char* read_entire_text_file(const char* filename) {
+		char* data = 0;
+		unsigned long size = 0;
+		
+		FILE* file = fopen(filename, "rb");
+		if(file) {
+			fseek(file, 0, SEEK_END);
+			size = ftell(file);
+			data = (char*)malloc(size + 1);
+			data[size] = 0;
+			fseek(file, 0, SEEK_SET);
+	
+			if(fread(data, 1, size, file) != size) {
+				free(data);
+				data = 0;
+			}
+
+			fclose(file);
+		}
+		
+		return data;
+	}
+
+	Internal void save_final_output(std::string image_name) {
+		std::vector<u8> pixels(4*width*height);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+		stbi_flip_vertically_on_write(true);
+		stbi_write_png(image_name.c_str(), width, height, 4, pixels.data(), 4*width);
+	}
+};
+
+namespace OpenGL {
+	Internal void initialize_tracer_rectangle() {
 		f32 target_rectangle_vertex_data[] = {
 			-1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
 			1.0f,  1.0f,  0.0f,  1.0f,  1.0f,
@@ -90,94 +150,94 @@ namespace Setup {
 		glEnableVertexAttribArray(0);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(f32), (void*)(0));
 	}
-}
 
-Internal char* read_entire_text_file(const char* filename) {
-	char* data = 0;
-	unsigned long size = 0;
+	Internal u32 create_shader_program(const char* vertex_shader_path, const char* fragment_shader_path) {
+		u32 id = 0;
 		
-	FILE* file = fopen(filename, "rb");
-	if(file) {
-		fseek(file, 0, SEEK_END);
-		size = ftell(file);
-		data = (char*)malloc(size + 1);
-		data[size] = 0;
-		fseek(file, 0, SEEK_SET);
-	
-		if(fread(data, 1, size, file) != size) {
-			free(data);
-			data = 0;
+		char* vertex_shader_source = IO::read_entire_text_file(vertex_shader_path);
+		if(!vertex_shader_source) {
+			std::cout << "Zero pointer provided as vertex shader source path" << std::endl;
+			return 0;
+		}
+		char* fragment_shader_source = IO::read_entire_text_file(fragment_shader_path);
+		if(!fragment_shader_source) {
+			std::cout << "Zero pointer provided as fragment shader source path" << std::endl;
+			return 0;
 		}
 
-		fclose(file);
-	}
+		u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+		u32 fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+
+		glShaderSource(vertex_shader, 1, &vertex_shader_source, 0);
+		glShaderSource(fragment_shader, 1, &fragment_shader_source, 0);
+
+		glCompileShader(vertex_shader);
 		
-	return data;
-}
+		int valid;
+		char info[512];
+		glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &valid);
+		if(!valid) {
+			glGetShaderInfoLog(vertex_shader, 512, 0, info);
+			std::cout << "Vertex shader compilation failed. " << info << std::endl;
+		}
 
-Internal u32 create_shader_program(const char* vertex_shader_path, const char* fragment_shader_path) {
-	u32 id = 0;
+		glCompileShader(fragment_shader);
+
+		glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &valid);
+		if(!valid) {
+			glGetShaderInfoLog(fragment_shader, 512, 0, info);
+			std::cout << "Fragment shader compilation failed. " << info << std::endl;
+		}
 		
-	char* vertex_shader_source = read_entire_text_file(vertex_shader_path);
-	if(!vertex_shader_source) {
-		std::cout << "Zero pointer provided as vertex shader source path" << std::endl;
-		return 0;
-	}
-	char* fragment_shader_source = read_entire_text_file(fragment_shader_path);
-	if(!fragment_shader_source) {
-		std::cout << "Zero pointer provided as fragment shader source path" << std::endl;
-		return 0;
-	}
-
-	u32 vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-	u32 fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-
-	glShaderSource(vertex_shader, 1, &vertex_shader_source, 0);
-	glShaderSource(fragment_shader, 1, &fragment_shader_source, 0);
-
-	glCompileShader(vertex_shader);
-		
-	int valid;
-	char info[512];
-	glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &valid);
-	if(!valid) {
-		glGetShaderInfoLog(vertex_shader, 512, 0, info);
-		std::cout << "Vertex shader compilation failed. " << info << std::endl;
-	}
-
-	glCompileShader(fragment_shader);
-
-	glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &valid);
-	if(!valid) {
-		glGetShaderInfoLog(fragment_shader, 512, 0, info);
-		std::cout << "Fragment shader compilation failed. " << info << std::endl;
-	}
-		
-	id = glCreateProgram();
-	glAttachShader(id, vertex_shader);
-	glAttachShader(id, fragment_shader);
-	glLinkProgram(id);
+		id = glCreateProgram();
+		glAttachShader(id, vertex_shader);
+		glAttachShader(id, fragment_shader);
+		glLinkProgram(id);
 	
-	glGetProgramiv(id, GL_LINK_STATUS, &valid);
-	if(!valid) {
-		glGetProgramInfoLog(id, 512, 0, info);
-		std::cout << "Shader program linking failed. " << info << std::endl;
+		glGetProgramiv(id, GL_LINK_STATUS, &valid);
+		if(!valid) {
+			glGetProgramInfoLog(id, 512, 0, info);
+			std::cout << "Shader program linking failed. " << info << std::endl;
+		}
+
+		free(vertex_shader_source);
+		free(fragment_shader_source);
+
+		glDetachShader(id, vertex_shader);
+		glDetachShader(id, fragment_shader);
+		glDeleteShader(vertex_shader);
+		glDeleteShader(fragment_shader);
+
+		return id;
 	}
 
-	free(vertex_shader_source);
-	free(fragment_shader_source);
+	Internal u32 create_uniform_buffer(u64 size_in_bytes) {
+		u32 uniform_buffer;
+		glGenBuffers(1, &uniform_buffer);
+		glBindBuffer(GL_UNIFORM_BUFFER, uniform_buffer);
+		glBufferData(GL_UNIFORM_BUFFER, size_in_bytes, 0, GL_STATIC_DRAW);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		return uniform_buffer;
+	}
 
-	glDetachShader(id, vertex_shader);
-	glDetachShader(id, fragment_shader);
-	glDeleteShader(vertex_shader);
-	glDeleteShader(fragment_shader);
-
-	return id;
-}
-
-Internal void use_shader_program(u32 id) {
-	glUseProgram(id);
-}
+	Internal void use_shader_program(u32 id) {
+		glUseProgram(id);
+	}
+	
+	Internal u32 create_and_bind_rgba32f_image2d(int image_width, int image_height, u32 image_bind_index) {
+		u32 tex;
+		glGenTextures(1, &tex);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, tex);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, image_width, image_height, 0, GL_RGBA, GL_FLOAT, NULL);
+		glBindImageTexture(image_bind_index, tex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		return tex;
+	}
+};
 
 struct V3 { f32 x, y, z; };
 struct V4 { f32 x, y, z, w; };
@@ -229,15 +289,6 @@ struct Triangle {
 		: p1(p1), p2(p2), p3(p3), mat_index(mat_index) {}
 };
 
-Internal u32 create_uniform_buffer(u64 size_in_bytes) {
-	u32 uniform_buffer;
-	glGenBuffers(1, &uniform_buffer);
-	glBindBuffer(GL_UNIFORM_BUFFER, uniform_buffer);
-	glBufferData(GL_UNIFORM_BUFFER, size_in_bytes, 0, GL_STATIC_DRAW);
-	glBindBuffer(GL_UNIFORM_BUFFER, 0);
-	return uniform_buffer;
-}
-
 namespace SimpleShaderConfig {
 	Internal constexpr u32 max_sphere_count   = 32;
 	Internal constexpr u32 max_material_count = 32;
@@ -280,9 +331,9 @@ struct SimpleScene {
 	}
 
 	void create_and_fill_uniform_buffers() {
-		spheres_ub   = create_uniform_buffer(SimpleShaderConfig::max_sphere_count   * sizeof(Sphere));
-		triangles_ub = create_uniform_buffer(SimpleShaderConfig::max_triangle_count * sizeof(Triangle));
-		materials_ub = create_uniform_buffer(SimpleShaderConfig::max_material_count * sizeof(Material));
+		spheres_ub   = OpenGL::create_uniform_buffer(SimpleShaderConfig::max_sphere_count   * sizeof(Sphere));
+		triangles_ub = OpenGL::create_uniform_buffer(SimpleShaderConfig::max_triangle_count * sizeof(Triangle));
+		materials_ub = OpenGL::create_uniform_buffer(SimpleShaderConfig::max_material_count * sizeof(Material));
 
 		glBindBufferRange(GL_UNIFORM_BUFFER, SimpleShaderConfig::spheres_ub_bind_index,   spheres_ub,   0, SimpleShaderConfig::max_sphere_count*sizeof(Sphere));
 		glBindBufferRange(GL_UNIFORM_BUFFER, SimpleShaderConfig::triangles_ub_bind_index, triangles_ub, 0, SimpleShaderConfig::max_triangle_count*sizeof(Triangle));
@@ -419,52 +470,6 @@ Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_
 	glFinish();
 }
 
-u32 create_and_bind_rgba32f_image2d(int image_width, int image_height, u32 image_bind_index) {
-	u32 tex;
-	glGenTextures(1, &tex);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, tex);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, image_width, image_height, 0, GL_RGBA, GL_FLOAT, NULL);
-	glBindImageTexture(image_bind_index, tex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-	return tex;
-}
-
-void save_final_output(std::string image_name) {
-	std::vector<u8> pixels(4*width*height);
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-	stbi_flip_vertically_on_write(true);
-	stbi_write_png(image_name.c_str(), width, height, 4, pixels.data(), 4*width);
-}
-
-namespace Log {
-	void batching_configuration(u32 ray_count, u32 batch_count, u32 ray_jump_count, u32 batch_jump_count) {
-		std::cout << "----------------------------------------" << std::endl;
-		std::cout << "Ray count              : " << ray_count << std::endl;
-		std::cout << "Batch count            : " << batch_count << std::endl;
-		std::cout << "Ray jump count         : " << ray_jump_count << std::endl;
-		std::cout << "Batch jump count       : " << batch_jump_count << std::endl;
-		std::cout << "----------------------------------------" << std::endl;
-	}
-
-	void measured_timings(double total_time, u32 ray_count, u32 batch_count) {
-		std::cout << "----------------------------------------" << std::endl;
-		std::cout << "Total time             : " << total_time << "s" << std::endl;
-		std::cout << "Average time per ray   : " << total_time / (ray_count*width*height) << "s" << std::endl;
-		std::cout << "Average time per pixel : " << total_time / (width*height) << "s" << std::endl;
-		std::cout << "Average time per batch : " << total_time / batch_count << "s" << std::endl;
-		std::cout << "----------------------------------------" << std::endl;
-	}
-
-	void percent_done(u32 jumps_done, u32 ray_count, u32 ray_jump_count) {
-		printf("\rPercent done           : %05.2f%%", (f32)jumps_done * 100 / (f32)(ray_count*ray_jump_count));
-		fflush(stdout);
-	}
-};
-
 void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batch_progrm) {
 	u32 ray_count = 128;
 	u32 ray_jump_count = 128;
@@ -474,8 +479,8 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batc
 
 	Log::batching_configuration(ray_count, batch_count, ray_jump_count, batch_jump_count);
 	
-	u32 batch_program = create_shader_program("shaders/batch.vert", "shaders/batch.frag");
-	use_shader_program(batch_program);
+	u32 batch_program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
+	OpenGL::use_shader_program(batch_program);
 
 	s32 execution_type_uniform_location = glGetUniformLocation(batch_program, "execution_type");
 	s32 time_uniform_location           = glGetUniformLocation(batch_program, "time");
@@ -487,15 +492,15 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batc
 	glUniform1ui(glGetUniformLocation(batch_program, "batch_jump_count"), batch_jump_count);
 	glUniform1ui(glGetUniformLocation(batch_program, "sphere_count"), (u32)scene.spheres.size());
 	glUniform1ui(glGetUniformLocation(batch_program, "triangle_count"), (u32)scene.triangles.size());
-		
+
 	glUniform3fv(glGetUniformLocation(batch_program, "camera.p"), 1, (f32*)&camera.p);
 	glUniform3fv(glGetUniformLocation(batch_program, "camera.x"), 1, (f32*)&camera.x);
 	glUniform3fv(glGetUniformLocation(batch_program, "camera.y"), 1, (f32*)&camera.y);
 	glUniform3fv(glGetUniformLocation(batch_program, "camera.z"), 1, (f32*)&camera.z);
 	glUniform1f(glGetUniformLocation(batch_program, "camera.f"), camera.f);
 
-	u32 batch_state_texture  = create_and_bind_rgba32f_image2d(4*width, height, 0); __ignore__(batch_state_texture);
-	u32 final_colors_texture = create_and_bind_rgba32f_image2d(  width, height, 1); __ignore__(final_colors_texture);
+	u32 batch_state_texture  = OpenGL::create_and_bind_rgba32f_image2d(4*width, height, 0); __ignore__(batch_state_texture);
+	u32 final_colors_texture = OpenGL::create_and_bind_rgba32f_image2d(  width, height, 1); __ignore__(final_colors_texture);
 	
 	u32 jumps_done = 0;
 	double time_start = glfwGetTime();
@@ -521,25 +526,27 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batc
 	std::cout << std::endl;
 	Log::measured_timings(total_time, ray_count, batch_count);
 	
-	save_final_output("generated_image.png");
+	IO::save_final_output("generated_image.png");
 }
 
+struct Tracer {
+	SimpleScene scene;
+	Camera camera;
+	u32 shader;
+
+	Tracer() {}
+	Tracer(SimpleScene& scene, Camera& camera, u32 shader) : scene(scene), camera(camera), shader(shader) {}
+};
+
 int main(int arg_count, char** args) {
-	GLFWwindow* window = Setup::window();
+	GLFWwindow* window = Window::create(true);
 	
 	if(!window) {
 		return - 1;
 	}
 
-	Setup::tracer_rectangle();
-
-	// u32 base_shader_program = create_shader_program("shaders/base.vert", "shaders/base.frag");
+	OpenGL::initialize_tracer_rectangle();
 	
-	// Cache uniform locations for variables that can change values during execution.
-	// s32 time_uniform_location   = glGetUniformLocation(base_shader_program, "time");
-	// s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
-	// s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
-
 #if 0
 	SimpleScene test_scene = SimpleScene::test_scene();
 
@@ -557,52 +564,60 @@ int main(int arg_count, char** args) {
 					 {0.0f, 0.0f, 1.0f},
 					 1.8f};
 #endif
-
+	
+#if 1
 	batch_test(window, test_scene, camera, 0);
-	return 0;
+#else
+	u32 base_shader_program = OpenGL::create_shader_program("shaders/base.vert", "shaders/base.frag");
 	
-	// use_shader_program(base_shader_program);
-
-	// glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"),   (u32)test_scene.spheres.size());
-	// glUniform1ui(glGetUniformLocation(base_shader_program, "triangle_count"), (u32)test_scene.triangles.size());
+	// Cache uniform locations for variables that can change values during execution.
+	s32 time_uniform_location   = glGetUniformLocation(base_shader_program, "time");
+	s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
+	s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
 	
-	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
-	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
-	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
-	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
-	// glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
+	OpenGL::use_shader_program(base_shader_program);
 
-	// double time_start;
-	// double time_end;
+	glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"),   (u32)test_scene.spheres.size());
+	glUniform1ui(glGetUniformLocation(base_shader_program, "triangle_count"), (u32)test_scene.triangles.size());
+	
+	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
+	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
+	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
+	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
+	glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
 
-	// time_start = glfwGetTime();
-	// while(!glfwWindowShouldClose(window))
-	// {
-	// 	if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-	// 		glfwSetWindowShouldClose(window, true);
-	// 	}
+	double time_start;
+	double time_end;
 
-	// 	if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
-	// 		std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-	// 	}
+	time_start = glfwGetTime();
+	while(!glfwWindowShouldClose(window))
+	{
+		if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+			glfwSetWindowShouldClose(window, true);
+		}
 
-	// 	glUniform1f(time_uniform_location, (f32)glfwGetTime());
-	// 	glUniform1f(width_uniform_location, (f32)width);
-	// 	glUniform1f(height_uniform_location, (f32)height);
+		if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+		}
+
+		glUniform1f(time_uniform_location, (f32)glfwGetTime());
+		glUniform1f(width_uniform_location, (f32)width);
+		glUniform1f(height_uniform_location, (f32)height);
 			
-	// 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	// 	glClear(GL_COLOR_BUFFER_BIT);
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
 
-	// 	use_shader_program(base_shader_program);
-	// 	glDrawArrays(GL_TRIANGLES, 0, 6);
+		OpenGL::use_shader_program(base_shader_program);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
 			
-	// 	glfwSwapBuffers(window);
-	// 	glfwPollEvents();
+		glfwSwapBuffers(window);
+		glfwPollEvents();
 
-	// 	time_end = glfwGetTime();
-	// 	glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
-	// 	time_start = time_end;
-	// }
+		time_end = glfwGetTime();
+		glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
+		time_start = time_end;
+	}
+#endif
 
 	glfwTerminate();
 	return 0;
