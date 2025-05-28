@@ -242,10 +242,28 @@ namespace OpenGL {
 struct V3 { f32 x, y, z; };
 struct V4 { f32 x, y, z, w; };
 
-// TODO(stekap): Add camera movement and zoom for debug.
 struct Camera {
 	V3 p, x, y, z;
 	float f;
+
+	Camera() {}
+	Camera(V3 p, V3 x, V3 y, V3 z, float f) : p(p), x(x), y(y), z(z), f(f) {}
+
+	static Camera test_scene() {
+		return Camera({0.0f, 1.0f, 1.0f},
+					  {1.0f, 0.0f, 0.0f},
+					  {0.0f, 1.0f, 0.0f},
+					  {0.0f, 0.0f, 1.0f},
+					  1.0f);
+	}
+
+	static Camera cornell_box() {
+		return Camera({278.0f, 274.0f, 800.0f},
+					  {1.0f, 0.0f, 0.0f},
+					  {0.0f, 1.0f, 0.0f},
+					  {0.0f, 0.0f, 1.0f},
+					  1.8f);
+	}
 };
 
 // TODO(stekap): If needed, types that are shared with the shader should be packed better
@@ -289,66 +307,47 @@ struct Triangle {
 		: p1(p1), p2(p2), p3(p3), mat_index(mat_index) {}
 };
 
-namespace SimpleShaderConfig {
-	Internal constexpr u32 max_sphere_count   = 32;
-	Internal constexpr u32 max_material_count = 32;
-	Internal constexpr u32 max_triangle_count = 32;
+namespace ShaderConfig {
+	Internal constexpr u32 max_sphere_count        = 32;
+	Internal constexpr u32 max_material_count      = 32;
+	Internal constexpr u32 max_triangle_count      = 32;
 
 	Internal constexpr u32 spheres_ub_bind_index   = 0;
 	Internal constexpr u32 triangles_ub_bind_index = 1;
 	Internal constexpr u32 materials_ub_bind_index = 2;
+
+	Internal constexpr u32 batch_state_bind_index  = 0;
+	Internal constexpr u32 final_colors_bind_index = 1;
 };
 
-struct SimpleScene {
+struct Scene {
 	std::vector<Sphere> spheres;
 	std::vector<Triangle> triangles;
 	std::vector<Material> materials;
 
-	u32 spheres_ub;
-	u32 triangles_ub;
-	u32 materials_ub;
-
-	SimpleScene() {}
+	Scene() {}
 	
-	SimpleScene(u32 sphere_count, u32 triangle_count, u32 material_count) {
-		assert(sphere_count   <= SimpleShaderConfig::max_sphere_count);
-		assert(triangle_count <= SimpleShaderConfig::max_triangle_count);
-		assert(material_count <= SimpleShaderConfig::max_material_count);
+	Scene(u32 sphere_count, u32 triangle_count, u32 material_count) {
+		assert(sphere_count   <= ShaderConfig::max_sphere_count);
+		assert(triangle_count <= ShaderConfig::max_triangle_count);
+		assert(material_count <= ShaderConfig::max_material_count);
 		
 		spheres.resize(sphere_count);
 		triangles.resize(triangle_count);
 		materials.resize(material_count);
 	}
 
-	SimpleScene(std::vector<Sphere>& spheres, std::vector<Triangle>& triangles, std::vector<Material>& materials) {
-		assert(spheres.size()   <= SimpleShaderConfig::max_sphere_count);
-		assert(triangles.size() <= SimpleShaderConfig::max_triangle_count);
-		assert(materials.size() <= SimpleShaderConfig::max_material_count);
+	Scene(std::vector<Sphere>& spheres, std::vector<Triangle>& triangles, std::vector<Material>& materials) {
+		assert(spheres.size()   <= ShaderConfig::max_sphere_count);
+		assert(triangles.size() <= ShaderConfig::max_triangle_count);
+		assert(materials.size() <= ShaderConfig::max_material_count);
 
 		this->spheres = spheres;
 		this->triangles = triangles;
 		this->materials = materials;
 	}
 
-	void create_and_fill_uniform_buffers() {
-		spheres_ub   = OpenGL::create_uniform_buffer(SimpleShaderConfig::max_sphere_count   * sizeof(Sphere));
-		triangles_ub = OpenGL::create_uniform_buffer(SimpleShaderConfig::max_triangle_count * sizeof(Triangle));
-		materials_ub = OpenGL::create_uniform_buffer(SimpleShaderConfig::max_material_count * sizeof(Material));
-
-		glBindBufferRange(GL_UNIFORM_BUFFER, SimpleShaderConfig::spheres_ub_bind_index,   spheres_ub,   0, SimpleShaderConfig::max_sphere_count*sizeof(Sphere));
-		glBindBufferRange(GL_UNIFORM_BUFFER, SimpleShaderConfig::triangles_ub_bind_index, triangles_ub, 0, SimpleShaderConfig::max_triangle_count*sizeof(Triangle));
-		glBindBufferRange(GL_UNIFORM_BUFFER, SimpleShaderConfig::materials_ub_bind_index, materials_ub, 0, SimpleShaderConfig::max_material_count*sizeof(Material));
-
-		glBindBuffer(GL_UNIFORM_BUFFER, spheres_ub);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, spheres.size()*sizeof(Sphere), spheres.data());
-		glBindBuffer(GL_UNIFORM_BUFFER, triangles_ub);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, triangles.size()*sizeof(Triangle), triangles.data());
-		glBindBuffer(GL_UNIFORM_BUFFER, materials_ub);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, materials.size()*sizeof(Material), materials.data());
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
-	}
-
-	static SimpleScene test_scene() {
+	static Scene test_scene() {
 		std::vector<Sphere> spheres = {
 			Sphere({0.0f, 0.0f, -2.0f}, 1.0f, 0),
 			Sphere({0.0f, -1000.0f, -2.0f}, 1000.0f, 1),
@@ -369,12 +368,10 @@ struct SimpleScene {
 			Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f}, 0.9f),
 		};
 		
-		SimpleScene scene(spheres, triangles, material);
-		scene.create_and_fill_uniform_buffers();
-		return scene;
+		return Scene(spheres, triangles, material);
 	}
 
-	static SimpleScene cornell_box() {
+	static Scene cornell_box() {
 		std::vector<Sphere> spheres;
 		std::vector<Triangle> triangles;
 		std::vector<Material> materials;
@@ -450,92 +447,117 @@ struct SimpleScene {
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // Green
 		materials.push_back(Material({0.6f, 0.6f, 0.6f}, {3.0f, 3.0f, 3.0f}, 0.95f)); // Light
 
-		SimpleScene scene(spheres, triangles, materials);
-		scene.create_and_fill_uniform_buffers();
-		return scene;
+		return Scene(spheres, triangles, materials);
 	}
 };
-
-enum : u32 {
-	EXECUTION_TYPE_INITIALIZE,
-	EXECUTION_TYPE_TRACE,
-	EXECUTION_TYPE_INCLUDE_RAY_COLOR,
-};
-
-Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
-	glUniform1ui(execution_type_uniform_location, execution_type);
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-	// TODO(stekap): Think about this barrier and glFinish further.
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-	glFinish();
-}
-
-void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batch_progrm) {
-	u32 ray_count = 128;
-	u32 ray_jump_count = 128;
-	u32 batch_jump_count = 128;
-	
-	u32 batch_count = (ray_jump_count / batch_jump_count);
-
-	Log::batching_configuration(ray_count, batch_count, ray_jump_count, batch_jump_count);
-	
-	u32 batch_program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
-	OpenGL::use_shader_program(batch_program);
-
-	s32 execution_type_uniform_location = glGetUniformLocation(batch_program, "execution_type");
-	s32 time_uniform_location           = glGetUniformLocation(batch_program, "time");
-
-	glUniform1f(glGetUniformLocation(batch_program, "width"), (f32)width);
-	glUniform1f(glGetUniformLocation(batch_program, "height"), (f32)height);
-	
-	glUniform1ui(glGetUniformLocation(batch_program, "ray_count"), ray_count);
-	glUniform1ui(glGetUniformLocation(batch_program, "batch_jump_count"), batch_jump_count);
-	glUniform1ui(glGetUniformLocation(batch_program, "sphere_count"), (u32)scene.spheres.size());
-	glUniform1ui(glGetUniformLocation(batch_program, "triangle_count"), (u32)scene.triangles.size());
-
-	glUniform3fv(glGetUniformLocation(batch_program, "camera.p"), 1, (f32*)&camera.p);
-	glUniform3fv(glGetUniformLocation(batch_program, "camera.x"), 1, (f32*)&camera.x);
-	glUniform3fv(glGetUniformLocation(batch_program, "camera.y"), 1, (f32*)&camera.y);
-	glUniform3fv(glGetUniformLocation(batch_program, "camera.z"), 1, (f32*)&camera.z);
-	glUniform1f(glGetUniformLocation(batch_program, "camera.f"), camera.f);
-
-	u32 batch_state_texture  = OpenGL::create_and_bind_rgba32f_image2d(4*width, height, 0); __ignore__(batch_state_texture);
-	u32 final_colors_texture = OpenGL::create_and_bind_rgba32f_image2d(  width, height, 1); __ignore__(final_colors_texture);
-	
-	u32 jumps_done = 0;
-	double time_start = glfwGetTime();
-	for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
-		glUniform1ui(glGetUniformLocation(batch_program, "processed_ray_count"), ray_index + 1);
-		
-		glUniform1f(time_uniform_location, (f32)glfwGetTime());
-		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
-		
-		for(u32 batch_index = 0; batch_index < batch_count; ++batch_index) {
-			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_TRACE);
-			jumps_done += batch_jump_count;
-		}
-		
-		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
-		glfwSwapBuffers(window);
-		
-		Log::percent_done(jumps_done, ray_count, ray_jump_count);
-	}
-
-	double total_time = glfwGetTime() - time_start;
-
-	std::cout << std::endl;
-	Log::measured_timings(total_time, ray_count, batch_count);
-	
-	IO::save_final_output("generated_image.png");
-}
 
 struct Tracer {
-	SimpleScene scene;
+	GLFWwindow* window;
+	Scene scene;
 	Camera camera;
-	u32 shader;
+	u32 program;
+
+	u32 spheres_ub;
+	u32 triangles_ub;
+	u32 materials_ub;
+
+	enum : u32 {
+		EXECUTION_TYPE_INITIALIZE,
+		EXECUTION_TYPE_TRACE,
+		EXECUTION_TYPE_INCLUDE_RAY_COLOR,
+	};
 
 	Tracer() {}
-	Tracer(SimpleScene& scene, Camera& camera, u32 shader) : scene(scene), camera(camera), shader(shader) {}
+	Tracer(GLFWwindow* window, Scene& scene, Camera& camera, u32 program) : window(window), scene(scene), camera(camera), program(program) {
+		OpenGL::use_shader_program(program);
+		initialize_scene();
+		initialize_camera();
+		initialize_program();
+	}
+
+	void initialize_scene() {
+		spheres_ub   = OpenGL::create_uniform_buffer(ShaderConfig::max_sphere_count   * sizeof(Sphere));
+		triangles_ub = OpenGL::create_uniform_buffer(ShaderConfig::max_triangle_count * sizeof(Triangle));
+		materials_ub = OpenGL::create_uniform_buffer(ShaderConfig::max_material_count * sizeof(Material));
+
+		glBindBufferRange(GL_UNIFORM_BUFFER, ShaderConfig::spheres_ub_bind_index,   spheres_ub,   0, ShaderConfig::max_sphere_count*sizeof(Sphere));
+		glBindBufferRange(GL_UNIFORM_BUFFER, ShaderConfig::triangles_ub_bind_index, triangles_ub, 0, ShaderConfig::max_triangle_count*sizeof(Triangle));
+		glBindBufferRange(GL_UNIFORM_BUFFER, ShaderConfig::materials_ub_bind_index, materials_ub, 0, ShaderConfig::max_material_count*sizeof(Material));
+
+		glBindBuffer(GL_UNIFORM_BUFFER, spheres_ub);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, scene.spheres.size()*sizeof(Sphere), scene.spheres.data());
+		glBindBuffer(GL_UNIFORM_BUFFER, triangles_ub);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, scene.triangles.size()*sizeof(Triangle), scene.triangles.data());
+		glBindBuffer(GL_UNIFORM_BUFFER, materials_ub);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, scene.materials.size()*sizeof(Material), scene.materials.data());
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	}
+
+	void initialize_camera() {
+		glUniform3fv(glGetUniformLocation(program, "camera.p"), 1, (f32*)&camera.p);
+		glUniform3fv(glGetUniformLocation(program, "camera.x"), 1, (f32*)&camera.x);
+		glUniform3fv(glGetUniformLocation(program, "camera.y"), 1, (f32*)&camera.y);
+		glUniform3fv(glGetUniformLocation(program, "camera.z"), 1, (f32*)&camera.z);
+		glUniform1f(glGetUniformLocation(program, "camera.f"), camera.f);
+	}
+
+	void initialize_program() {
+		glUniform1f(glGetUniformLocation(program, "width"), (f32)width);
+		glUniform1f(glGetUniformLocation(program, "height"), (f32)height);
+		glUniform1ui(glGetUniformLocation(program, "sphere_count"), (u32)scene.spheres.size());
+		glUniform1ui(glGetUniformLocation(program, "triangle_count"), (u32)scene.triangles.size());
+	}
+
+	Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
+		glUniform1ui(execution_type_uniform_location, execution_type);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		// TODO(stekap): Think about this barrier and glFinish further.
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		glFinish();
+	}
+
+	void run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count) {
+		u32 batch_count = (ray_jump_count / batch_jump_count);
+
+		Log::batching_configuration(ray_count, batch_count, ray_jump_count, batch_jump_count);
+	
+		s32 execution_type_uniform_location = glGetUniformLocation(program, "execution_type");
+		s32 time_uniform_location           = glGetUniformLocation(program, "time");
+
+		glUniform1ui(glGetUniformLocation(program, "ray_count"), ray_count);
+		glUniform1ui(glGetUniformLocation(program, "batch_jump_count"), batch_jump_count);
+
+		u32 batch_state_texture  = OpenGL::create_and_bind_rgba32f_image2d(4*width, height, ShaderConfig::batch_state_bind_index);
+		__ignore__(batch_state_texture);
+		u32 final_colors_texture = OpenGL::create_and_bind_rgba32f_image2d(  width, height, ShaderConfig::final_colors_bind_index);
+		__ignore__(final_colors_texture);
+	
+		u32 jumps_done = 0;
+		double time_start = glfwGetTime();
+		for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
+			glUniform1ui(glGetUniformLocation(program, "processed_ray_count"), ray_index + 1);
+		
+			glUniform1f(time_uniform_location, (f32)glfwGetTime());
+			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
+		
+			for(u32 batch_index = 0; batch_index < batch_count; ++batch_index) {
+				dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_TRACE);
+				jumps_done += batch_jump_count;
+			}
+		
+			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
+			glfwSwapBuffers(window);
+		
+			Log::percent_done(jumps_done, ray_count, ray_jump_count);
+		}
+
+		double total_time = glfwGetTime() - time_start;
+
+		std::cout << std::endl;
+		Log::measured_timings(total_time, ray_count, batch_count);
+	
+		IO::save_final_output("generated_image.png");
+	}
 };
 
 int main(int arg_count, char** args) {
@@ -547,77 +569,68 @@ int main(int arg_count, char** args) {
 
 	OpenGL::initialize_tracer_rectangle();
 	
-#if 0
-	SimpleScene test_scene = SimpleScene::test_scene();
-
-	Camera camera = {{0.0f, 1.0f, 1.0f},
-					 {1.0f, 0.0f, 0.0f},
-					 {0.0f, 1.0f, 0.0f},
-					 {0.0f, 0.0f, 1.0f},
-					 1.0f};
-#else
-	SimpleScene test_scene = SimpleScene::cornell_box();
-
-	Camera camera = {{278.0f, 274.0f, 800.0f},
-					 {1.0f, 0.0f, 0.0f},
-					 {0.0f, 1.0f, 0.0f},
-					 {0.0f, 0.0f, 1.0f},
-					 1.8f};
-#endif
+	Scene scene = Scene::cornell_box();
+	Camera camera = Camera::cornell_box();
 	
-#if 1
-	batch_test(window, test_scene, camera, 0);
-#else
-	u32 base_shader_program = OpenGL::create_shader_program("shaders/base.vert", "shaders/base.frag");
+	u32 ray_count = 128;
+	u32 ray_jump_count = 128;
+	u32 batch_jump_count = 128;
 	
-	// Cache uniform locations for variables that can change values during execution.
-	s32 time_uniform_location   = glGetUniformLocation(base_shader_program, "time");
-	s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
-	s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
+	u32 program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
 	
-	OpenGL::use_shader_program(base_shader_program);
+	Tracer tracer(window, scene, camera, program);
+	tracer.run(ray_count, ray_jump_count, batch_jump_count);
 
-	glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"),   (u32)test_scene.spheres.size());
-	glUniform1ui(glGetUniformLocation(base_shader_program, "triangle_count"), (u32)test_scene.triangles.size());
+	// TODO(stekap): Include this into tracer debug.
+	// u32 base_shader_program = OpenGL::create_shader_program("shaders/base.vert", "shaders/base.frag");
 	
-	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
-	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
-	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
-	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
-	glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
+	// // Cache uniform locations for variables that can change values during execution.
+	// s32 time_uniform_location   = glGetUniformLocation(base_shader_program, "time");
+	// s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
+	// s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
+	
+	// OpenGL::use_shader_program(base_shader_program);
 
-	double time_start;
-	double time_end;
+	// glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"),   (u32)scene.spheres.size());
+	// glUniform1ui(glGetUniformLocation(base_shader_program, "triangle_count"), (u32)scene.triangles.size());
+	
+	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
+	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
+	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
+	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
+	// glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
 
-	time_start = glfwGetTime();
-	while(!glfwWindowShouldClose(window))
-	{
-		if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-			glfwSetWindowShouldClose(window, true);
-		}
+	// double time_start;
+	// double time_end;
 
-		if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-		}
+	// time_start = glfwGetTime();
+	// while(!glfwWindowShouldClose(window))
+	// {
+	// 	if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+	// 		glfwSetWindowShouldClose(window, true);
+	// 	}
 
-		glUniform1f(time_uniform_location, (f32)glfwGetTime());
-		glUniform1f(width_uniform_location, (f32)width);
-		glUniform1f(height_uniform_location, (f32)height);
+	// 	if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+	// 		std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+	// 	}
+
+	// 	glUniform1f(time_uniform_location, (f32)glfwGetTime());
+	// 	glUniform1f(width_uniform_location, (f32)width);
+	// 	glUniform1f(height_uniform_location, (f32)height);
 			
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+	// 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	// 	glClear(GL_COLOR_BUFFER_BIT);
 
-		OpenGL::use_shader_program(base_shader_program);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+	// 	OpenGL::use_shader_program(base_shader_program);
+	// 	glDrawArrays(GL_TRIANGLES, 0, 6);
 			
-		glfwSwapBuffers(window);
-		glfwPollEvents();
+	// 	glfwSwapBuffers(window);
+	// 	glfwPollEvents();
 
-		time_end = glfwGetTime();
-		glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
-		time_start = time_end;
-	}
-#endif
+	// 	time_end = glfwGetTime();
+	// 	glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
+	// 	time_start = time_end;
+	// }
 
 	glfwTerminate();
 	return 0;
