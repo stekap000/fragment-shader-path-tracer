@@ -298,11 +298,11 @@ struct Camera {
 	}
 
 	static Camera cornell_box() {
-		return Camera({278.0f, 274.0f, 500.0f},
+		return Camera({278.0f, 274.0f, 600.0f},
 					  {1.0f, 0.0f, 0.0f},
 					  {0.0f, 1.0f, 0.0f},
 					  {0.0f, 0.0f, 1.0f},
-					  1.8f);
+					  2.2f);
 	}
 };
 
@@ -625,8 +625,8 @@ int main(int arg_count, char** args) {
 	// This generates a single image.
 	tracer.run(ray_count, ray_jump_count, batch_jump_count);
 	
-	// This is a real time mode for debugging. Values like ray_count should be low here, for example 8.
-	// tracer.debug(ray_count, ray_jump_count, batch_jump_count);
+	// This is a real time mode for debugging. Values like ray_count should be low here.
+	// tracer.debug(4, 4, 4);
 
 	glfwTerminate();
 	return 0;
