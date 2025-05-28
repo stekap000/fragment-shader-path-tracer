@@ -1,9 +1,8 @@
 #include "glad/glad.h"
 #include "glfw/glfw3.h"
 
-// #include <glm/glm.hpp>
-// #include <glm/gtc/matrix_transform.hpp>
-// #include <glm/gtc/type_ptr.hpp>
+// NOTE(stekap): We won't bother with resource cleanup like allocated textures or whatever
+//               since the program just generates image and exits so the OS will do the cleanup.
 
 #include <iostream>
 #include <cstdio>
@@ -19,18 +18,18 @@
 #define __ignore__(x)((void)(x))
 #define Internal static
 
-typedef unsigned char u8;
-typedef unsigned int u32;
+typedef unsigned char           u8;
+typedef unsigned int           u32;
 typedef unsigned long long int u64;
-typedef int s32;
-typedef long long int s64;
-typedef float f32;
-typedef double f64;
+typedef int                    s32;
+typedef long long int          s64;
+typedef float                  f32;
+typedef double                 f64;
 
 // NOTE(stekap): Keep track of these global variables so that we don't need to callback
 //               glfwGetWindowSize in order to retrieve them from window.
-Internal int width = 1000;
-Internal int height = 1000;
+Internal int width  = 800;
+Internal int height = 800;
 
 namespace Log {
 	void batching_configuration(u32 ray_count, u32 batch_count, u32 ray_jump_count, u32 batch_jump_count) {
@@ -242,30 +241,6 @@ namespace OpenGL {
 struct V3 { f32 x, y, z; };
 struct V4 { f32 x, y, z, w; };
 
-struct Camera {
-	V3 p, x, y, z;
-	float f;
-
-	Camera() {}
-	Camera(V3 p, V3 x, V3 y, V3 z, float f) : p(p), x(x), y(y), z(z), f(f) {}
-
-	static Camera test_scene() {
-		return Camera({0.0f, 1.0f, 1.0f},
-					  {1.0f, 0.0f, 0.0f},
-					  {0.0f, 1.0f, 0.0f},
-					  {0.0f, 0.0f, 1.0f},
-					  1.0f);
-	}
-
-	static Camera cornell_box() {
-		return Camera({278.0f, 274.0f, 800.0f},
-					  {1.0f, 0.0f, 0.0f},
-					  {0.0f, 1.0f, 0.0f},
-					  {0.0f, 0.0f, 1.0f},
-					  1.8f);
-	}
-};
-
 // TODO(stekap): If needed, types that are shared with the shader should be packed better
 //               (when their attributes and value ranges become more apparent).
 
@@ -305,6 +280,30 @@ struct Triangle {
 	Triangle() {}
 	Triangle(V3 p1, V3 p2, V3 p3, u32 mat_index)
 		: p1(p1), p2(p2), p3(p3), mat_index(mat_index) {}
+};
+
+struct Camera {
+	V3 p, x, y, z;
+	float f;
+
+	Camera() {}
+	Camera(V3 p, V3 x, V3 y, V3 z, float f) : p(p), x(x), y(y), z(z), f(f) {}
+
+	static Camera test_scene() {
+		return Camera({0.0f, 1.0f, 1.0f},
+					  {1.0f, 0.0f, 0.0f},
+					  {0.0f, 1.0f, 0.0f},
+					  {0.0f, 0.0f, 1.0f},
+					  1.0f);
+	}
+
+	static Camera cornell_box() {
+		return Camera({278.0f, 274.0f, 500.0f},
+					  {1.0f, 0.0f, 0.0f},
+					  {0.0f, 1.0f, 0.0f},
+					  {0.0f, 0.0f, 1.0f},
+					  1.8f);
+	}
 };
 
 namespace ShaderConfig {
@@ -516,10 +515,10 @@ struct Tracer {
 		glFinish();
 	}
 
-	void run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count) {
+	void run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count, bool debug = false) {
 		u32 batch_count = (ray_jump_count / batch_jump_count);
 
-		Log::batching_configuration(ray_count, batch_count, ray_jump_count, batch_jump_count);
+		if(!debug) Log::batching_configuration(ray_count, batch_count, ray_jump_count, batch_jump_count);
 	
 		s32 execution_type_uniform_location = glGetUniformLocation(program, "execution_type");
 		s32 time_uniform_location           = glGetUniformLocation(program, "time");
@@ -546,21 +545,64 @@ struct Tracer {
 			}
 		
 			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
-			glfwSwapBuffers(window);
-		
-			Log::percent_done(jumps_done, ray_count, ray_jump_count);
+			
+			if(!debug) {
+				glfwSwapBuffers(window);
+				Log::percent_done(jumps_done, ray_count, ray_jump_count);
+			}
 		}
 
 		double total_time = glfwGetTime() - time_start;
 
-		std::cout << std::endl;
-		Log::measured_timings(total_time, ray_count, batch_count);
-	
-		IO::save_final_output("generated_image.png");
+		if(!debug) {
+			std::cout << std::endl;
+			Log::measured_timings(total_time, ray_count, batch_count);
+			IO::save_final_output("generated_image.png");
+		}
+	}
+
+	void debug(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count) {
+		s32 time_uniform_location   = glGetUniformLocation(program, "time");
+		s32 width_uniform_location  = glGetUniformLocation(program, "width");
+		s32 height_uniform_location = glGetUniformLocation(program, "height");
+		
+		double time_start;
+		double time_end;
+
+		time_start = glfwGetTime();
+		while(!glfwWindowShouldClose(window))
+		{
+			if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+				glfwSetWindowShouldClose(window, true);
+			}
+
+			if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+			}
+
+			glUniform1f(time_uniform_location, (f32)glfwGetTime());
+			glUniform1f(width_uniform_location, (f32)width);
+			glUniform1f(height_uniform_location, (f32)height);
+			
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			run(ray_count, ray_jump_count, batch_jump_count, true);
+			glfwSwapBuffers(window);
+
+			glfwPollEvents();
+
+			time_end = glfwGetTime();
+			glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
+			time_start = time_end;
+		}
 	}
 };
 
 int main(int arg_count, char** args) {
+	// False in window creating means that it will be hidden i.e. we will only have console output during generation.
 	GLFWwindow* window = Window::create(true);
 	
 	if(!window) {
@@ -569,68 +611,22 @@ int main(int arg_count, char** args) {
 
 	OpenGL::initialize_tracer_rectangle();
 	
-	Scene scene = Scene::cornell_box();
+	Scene scene   = Scene::cornell_box();
 	Camera camera = Camera::cornell_box();
 	
-	u32 ray_count = 128;
-	u32 ray_jump_count = 128;
+	u32 ray_count        = 256;
+	u32 ray_jump_count   = 256;
 	u32 batch_jump_count = 128;
 	
 	u32 program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
 	
 	Tracer tracer(window, scene, camera, program);
+
+	// This generates a single image.
 	tracer.run(ray_count, ray_jump_count, batch_jump_count);
-
-	// TODO(stekap): Include this into tracer debug.
-	// u32 base_shader_program = OpenGL::create_shader_program("shaders/base.vert", "shaders/base.frag");
 	
-	// // Cache uniform locations for variables that can change values during execution.
-	// s32 time_uniform_location   = glGetUniformLocation(base_shader_program, "time");
-	// s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
-	// s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
-	
-	// OpenGL::use_shader_program(base_shader_program);
-
-	// glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"),   (u32)scene.spheres.size());
-	// glUniform1ui(glGetUniformLocation(base_shader_program, "triangle_count"), (u32)scene.triangles.size());
-	
-	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
-	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
-	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
-	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
-	// glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
-
-	// double time_start;
-	// double time_end;
-
-	// time_start = glfwGetTime();
-	// while(!glfwWindowShouldClose(window))
-	// {
-	// 	if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-	// 		glfwSetWindowShouldClose(window, true);
-	// 	}
-
-	// 	if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
-	// 		std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-	// 	}
-
-	// 	glUniform1f(time_uniform_location, (f32)glfwGetTime());
-	// 	glUniform1f(width_uniform_location, (f32)width);
-	// 	glUniform1f(height_uniform_location, (f32)height);
-			
-	// 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	// 	glClear(GL_COLOR_BUFFER_BIT);
-
-	// 	OpenGL::use_shader_program(base_shader_program);
-	// 	glDrawArrays(GL_TRIANGLES, 0, 6);
-			
-	// 	glfwSwapBuffers(window);
-	// 	glfwPollEvents();
-
-	// 	time_end = glfwGetTime();
-	// 	glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
-	// 	time_start = time_end;
-	// }
+	// This is a real time mode for debugging. Values like ray_count should be low here, for example 8.
+	// tracer.debug(ray_count, ray_jump_count, batch_jump_count);
 
 	glfwTerminate();
 	return 0;
