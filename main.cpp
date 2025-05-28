@@ -13,6 +13,9 @@
 #include <chrono>
 #include <thread>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb/stb_image_write.h"
+
 #define __ignore__(x)((void)(x))
 #define Internal static
 
@@ -416,25 +419,66 @@ Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_
 	glFinish();
 }
 
+u32 create_and_bind_rgba32f_image2d(int image_width, int image_height, u32 image_bind_index) {
+	u32 tex;
+	glGenTextures(1, &tex);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, image_width, image_height, 0, GL_RGBA, GL_FLOAT, NULL);
+	glBindImageTexture(image_bind_index, tex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+	return tex;
+}
+
+void save_final_output(std::string image_name) {
+	std::vector<u8> pixels(4*width*height);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+	stbi_flip_vertically_on_write(true);
+	stbi_write_png(image_name.c_str(), width, height, 4, pixels.data(), 4*width);
+}
+
+namespace Log {
+	void batching_configuration(u32 ray_count, u32 batch_count, u32 ray_jump_count, u32 batch_jump_count) {
+		std::cout << "----------------------------------------" << std::endl;
+		std::cout << "Ray count              : " << ray_count << std::endl;
+		std::cout << "Batch count            : " << batch_count << std::endl;
+		std::cout << "Ray jump count         : " << ray_jump_count << std::endl;
+		std::cout << "Batch jump count       : " << batch_jump_count << std::endl;
+		std::cout << "----------------------------------------" << std::endl;
+	}
+
+	void measured_timings(double total_time, u32 ray_count, u32 batch_count) {
+		std::cout << "----------------------------------------" << std::endl;
+		std::cout << "Total time             : " << total_time << "s" << std::endl;
+		std::cout << "Average time per ray   : " << total_time / (ray_count*width*height) << "s" << std::endl;
+		std::cout << "Average time per pixel : " << total_time / (width*height) << "s" << std::endl;
+		std::cout << "Average time per batch : " << total_time / batch_count << "s" << std::endl;
+		std::cout << "----------------------------------------" << std::endl;
+	}
+
+	void percent_done(u32 jumps_done, u32 ray_count, u32 ray_jump_count) {
+		printf("\rPercent done           : %05.2f%%", (f32)jumps_done * 100 / (f32)(ray_count*ray_jump_count));
+		fflush(stdout);
+	}
+};
+
 void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batch_progrm) {
-	u32 ray_count = 256;
-	u32 ray_jump_count = 256;
+	u32 ray_count = 128;
+	u32 ray_jump_count = 128;
 	u32 batch_jump_count = 128;
 	
 	u32 batch_count = (ray_jump_count / batch_jump_count);
 
-	std::cout << "----------------------------------------" << std::endl;
-	std::cout << "Ray count              : " << ray_count << std::endl;
-	std::cout << "Batch count            : " << batch_count << std::endl;
-	std::cout << "Ray jump count         : " << ray_jump_count << std::endl;
-	std::cout << "Batch jump count       : " << batch_jump_count << std::endl;
-	std::cout << "----------------------------------------" << std::endl;
+	Log::batching_configuration(ray_count, batch_count, ray_jump_count, batch_jump_count);
 	
 	u32 batch_program = create_shader_program("shaders/batch.vert", "shaders/batch.frag");
 	use_shader_program(batch_program);
 
 	s32 execution_type_uniform_location = glGetUniformLocation(batch_program, "execution_type");
-	s32 time_uniform_location = glGetUniformLocation(batch_program, "time");
+	s32 time_uniform_location           = glGetUniformLocation(batch_program, "time");
 
 	glUniform1f(glGetUniformLocation(batch_program, "width"), (f32)width);
 	glUniform1f(glGetUniformLocation(batch_program, "height"), (f32)height);
@@ -450,32 +494,10 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batc
 	glUniform3fv(glGetUniformLocation(batch_program, "camera.z"), 1, (f32*)&camera.z);
 	glUniform1f(glGetUniformLocation(batch_program, "camera.f"), camera.f);
 
-	u32 batch_state;
-	glGenTextures(1, &batch_state);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, batch_state);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4*width, height, 0, GL_RGBA, GL_FLOAT, NULL);
-	glBindImageTexture(0, batch_state, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-
-	u32 final_colors;
-	glGenTextures(1, &final_colors);
-	glActiveTexture(GL_TEXTURE0 + 1);
-	glBindTexture(GL_TEXTURE_2D, final_colors);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
-	glBindImageTexture(1, final_colors, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-
-	glUniform1ui(glGetUniformLocation(batch_program, "batch_state"), 0);
-	glUniform1ui(glGetUniformLocation(batch_program, "final_colors"), 1);
+	u32 batch_state_texture  = create_and_bind_rgba32f_image2d(4*width, height, 0); __ignore__(batch_state_texture);
+	u32 final_colors_texture = create_and_bind_rgba32f_image2d(  width, height, 1); __ignore__(final_colors_texture);
 	
-	int jumps_done = 0;
+	u32 jumps_done = 0;
 	double time_start = glfwGetTime();
 	for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
 		glUniform1ui(glGetUniformLocation(batch_program, "processed_ray_count"), ray_index + 1);
@@ -486,39 +508,20 @@ void batch_test(GLFWwindow* window, SimpleScene& scene, Camera& camera, u32 batc
 		for(u32 batch_index = 0; batch_index < batch_count; ++batch_index) {
 			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_TRACE);
 			jumps_done += batch_jump_count;
-			
 		}
+		
 		dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
 		glfwSwapBuffers(window);
-		printf("\rPercent done           : %05.2f%%", (f32)jumps_done * 100 / (f32)(ray_count*ray_jump_count));
-		fflush(stdout);
+		
+		Log::percent_done(jumps_done, ray_count, ray_jump_count);
 	}
 
 	double total_time = glfwGetTime() - time_start;
-	
+
 	std::cout << std::endl;
-	std::cout << "----------------------------------------" << std::endl;
-	std::cout << "Total time             : " << total_time << "s" << std::endl;
-	std::cout << "Average time per ray   : " << total_time / (ray_count*width*height) << "s" << std::endl;
-	std::cout << "Average time per pixel : " << total_time / (width*height) << "s" << std::endl;
-	std::cout << "Average time per batch : " << total_time / batch_count << "s" << std::endl;
-	std::cout << "----------------------------------------" << std::endl;
-
-	std::vector<u8> pixels(4*width*height);
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+	Log::measured_timings(total_time, ray_count, batch_count);
 	
-	std::ofstream out_ppm;
-	out_ppm.open("test.ppm", std::ios_base::binary);
-	out_ppm << "P6\n" << width << " " << height << "\n255\n";
-
-	for(int y = height - 1; y >= 0; --y) {
-		for(int x = 0; x < width; ++x) {
-			int index = 4*(y*width + x);
-			out_ppm << pixels[index+0];
-			out_ppm << pixels[index+1];
-			out_ppm << pixels[index+2];
-		}
-	}
+	save_final_output("generated_image.png");
 }
 
 int main(int arg_count, char** args) {
@@ -530,12 +533,12 @@ int main(int arg_count, char** args) {
 
 	Setup::tracer_rectangle();
 
-	u32 base_shader_program = create_shader_program("shaders/base.vert", "shaders/base.frag");
+	// u32 base_shader_program = create_shader_program("shaders/base.vert", "shaders/base.frag");
 	
 	// Cache uniform locations for variables that can change values during execution.
-	s32 time_uniform_location   = glGetUniformLocation(base_shader_program, "time");
-	s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
-	s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
+	// s32 time_uniform_location   = glGetUniformLocation(base_shader_program, "time");
+	// s32 width_uniform_location  = glGetUniformLocation(base_shader_program, "width");
+	// s32 height_uniform_location = glGetUniformLocation(base_shader_program, "height");
 
 #if 0
 	SimpleScene test_scene = SimpleScene::test_scene();
@@ -558,48 +561,48 @@ int main(int arg_count, char** args) {
 	batch_test(window, test_scene, camera, 0);
 	return 0;
 	
-	use_shader_program(base_shader_program);
+	// use_shader_program(base_shader_program);
 
-	glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"),   (u32)test_scene.spheres.size());
-	glUniform1ui(glGetUniformLocation(base_shader_program, "triangle_count"), (u32)test_scene.triangles.size());
+	// glUniform1ui(glGetUniformLocation(base_shader_program, "sphere_count"),   (u32)test_scene.spheres.size());
+	// glUniform1ui(glGetUniformLocation(base_shader_program, "triangle_count"), (u32)test_scene.triangles.size());
 	
-	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
-	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
-	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
-	glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
-	glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
+	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.p"), 1, (f32*)&camera.p);
+	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.x"), 1, (f32*)&camera.x);
+	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.y"), 1, (f32*)&camera.y);
+	// glUniform3fv(glGetUniformLocation(base_shader_program, "camera.z"), 1, (f32*)&camera.z);
+	// glUniform1f(glGetUniformLocation(base_shader_program, "camera.f"), camera.f);
 
-	double time_start;
-	double time_end;
+	// double time_start;
+	// double time_end;
 
-	time_start = glfwGetTime();
-	while(!glfwWindowShouldClose(window))
-	{
-		if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-			glfwSetWindowShouldClose(window, true);
-		}
+	// time_start = glfwGetTime();
+	// while(!glfwWindowShouldClose(window))
+	// {
+	// 	if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+	// 		glfwSetWindowShouldClose(window, true);
+	// 	}
 
-		if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-		}
+	// 	if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+	// 		std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+	// 	}
 
-		glUniform1f(time_uniform_location, (f32)glfwGetTime());
-		glUniform1f(width_uniform_location, (f32)width);
-		glUniform1f(height_uniform_location, (f32)height);
+	// 	glUniform1f(time_uniform_location, (f32)glfwGetTime());
+	// 	glUniform1f(width_uniform_location, (f32)width);
+	// 	glUniform1f(height_uniform_location, (f32)height);
 			
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+	// 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	// 	glClear(GL_COLOR_BUFFER_BIT);
 
-		use_shader_program(base_shader_program);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+	// 	use_shader_program(base_shader_program);
+	// 	glDrawArrays(GL_TRIANGLES, 0, 6);
 			
-		glfwSwapBuffers(window);
-		glfwPollEvents();
+	// 	glfwSwapBuffers(window);
+	// 	glfwPollEvents();
 
-		time_end = glfwGetTime();
-		glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
-		time_start = time_end;
-	}
+	// 	time_end = glfwGetTime();
+	// 	glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
+	// 	time_start = time_end;
+	// }
 
 	glfwTerminate();
 	return 0;
