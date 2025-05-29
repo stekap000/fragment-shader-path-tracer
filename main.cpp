@@ -63,12 +63,15 @@ namespace Window {
 		glViewport(0, 0, width, height);
 	}
 
-	Internal GLFWwindow* create(bool visible) {
+	Internal GLFWwindow* create(int w, int h, bool visible) {
 		glfwInit();
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 		glfwWindowHint(GLFW_VISIBLE, visible);
+
+		width = w;
+		height = h;
 	
 		GLFWwindow* window = glfwCreateWindow(width, height, "FragmentShaderPlayground", NULL, NULL);
 		glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
@@ -603,7 +606,7 @@ struct Tracer {
 
 int main(int arg_count, char** args) {
 	// False in window creating means that it will be hidden i.e. we will only have console output during generation.
-	GLFWwindow* window = Window::create(true);
+	GLFWwindow* window = Window::create(800, 800, true);
 	
 	if(!window) {
 		return - 1;
