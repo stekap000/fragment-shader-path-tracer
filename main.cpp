@@ -244,17 +244,32 @@ namespace OpenGL {
 struct V3 { f32 x, y, z; };
 struct V4 { f32 x, y, z, w; };
 
+// TODO(stekap): Maybe metaprogram part of the shader source, so that we can define things only once on the host
+//               and have them in proper form in the shader (for example shared types and some constants like
+//               max_triangle_count).
+
+// NOTE(stekap): For types like Material that are shared between this code and shader code,
+//               constructor parameters order represents more logical attribute order, but
+//               the actual order differs from that in order to be more nicely packed for
+//               shader.
+
 // TODO(stekap): If needed, types that are shared with the shader should be packed better
 //               (when their attributes and value ranges become more apparent).
+
+enum : u32 {
+	MATERIAL_FLAGS_NONE      = (0 << 0),
+	MATERIAL_FLAGS_BLACKBODY = (1 << 0)
+};
 
 struct Material {
 	V3 reflectance;
 	f32 scatter;
 	V3 emittance;
-	f32 SHADER_PAD;
+	// TODO(stekap): Currently, flags is more for testing. Maybe remove, maybe expand.
+	u32 flags;
 
 	Material() {}
-	Material(V3 reflectance, V3 emittance, f32 scatter)
+	Material(V3 reflectance, V3 emittance, f32 scatter, u32 flags)
 		: reflectance(reflectance), emittance(emittance), scatter(scatter) {}
 };
 
@@ -320,6 +335,8 @@ namespace ShaderConfig {
 
 	Internal constexpr u32 batch_state_bind_index  = 0;
 	Internal constexpr u32 final_colors_bind_index = 1;
+
+	Internal constexpr u32 ray_size_in_vec4        = 5;
 };
 
 struct Scene {
@@ -363,11 +380,11 @@ struct Scene {
 		};
 
 		std::vector<Material> material = {
-			Material({1.0f, 0.4f, 0.3f}, {0.0, 0.0, 0.0}, 0.7f),
-			Material({0.3f, 1.0f, 0.3f}, {0.0, 0.0, 0.0}, 0.9f),
-			Material({0.7f, 0.7f, 0.7f}, {0.0, 0.0, 0.0}, 0.001f),
-			Material({0.8f, 0.8f, 0.8f}, {0.3f, 0.4f, 10.0f}, 0.9f),
-			Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f}, 0.9f),
+			Material({1.0f, 0.4f, 0.3f}, {0.0, 0.0, 0.0},     0.7f,   MATERIAL_FLAGS_NONE),
+			Material({0.3f, 1.0f, 0.3f}, {0.0, 0.0, 0.0},     0.9f,   MATERIAL_FLAGS_NONE),
+			Material({0.7f, 0.7f, 0.7f}, {0.0, 0.0, 0.0},     0.001f, MATERIAL_FLAGS_NONE),
+			Material({0.8f, 0.8f, 0.8f}, {0.3f, 0.4f, 10.0f}, 0.9f,   MATERIAL_FLAGS_BLACKBODY),
+			Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f},  0.9f,   MATERIAL_FLAGS_BLACKBODY),
 		};
 		
 		return Scene(spheres, triangles, material);
@@ -444,10 +461,10 @@ struct Scene {
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {84.0f, 330.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, 0));
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, {242.0f, 0.0f, -456.0f}, 0));
 		
-		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // White
-		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // Red
-		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f)); // Green
-		materials.push_back(Material({0.6f, 0.6f, 0.6f}, {3.0f, 3.0f, 3.0f}, 0.95f)); // Light
+		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // White
+		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Red
+		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Green
+		materials.push_back(Material({0.6f, 0.6f, 0.6f}, {3.0f, 3.0f, 3.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
 
 		return Scene(spheres, triangles, materials);
 	}
@@ -529,7 +546,7 @@ struct Tracer {
 		glUniform1ui(glGetUniformLocation(program, "ray_count"), ray_count);
 		glUniform1ui(glGetUniformLocation(program, "batch_jump_count"), batch_jump_count);
 
-		u32 batch_state_texture  = OpenGL::create_and_bind_rgba32f_image2d(4*width, height, ShaderConfig::batch_state_bind_index);
+		u32 batch_state_texture  = OpenGL::create_and_bind_rgba32f_image2d(ShaderConfig::ray_size_in_vec4*width, height, ShaderConfig::batch_state_bind_index);
 		__ignore__(batch_state_texture);
 		u32 final_colors_texture = OpenGL::create_and_bind_rgba32f_image2d(  width, height, ShaderConfig::final_colors_bind_index);
 		__ignore__(final_colors_texture);
@@ -616,6 +633,8 @@ int main(int arg_count, char** args) {
 	
 	Scene scene   = Scene::cornell_box();
 	Camera camera = Camera::cornell_box();
+	// Scene scene   = Scene::test_scene();
+	// Camera camera = Camera::test_scene();
 	
 	u32 ray_count        = 256;
 	u32 ray_jump_count   = 256;

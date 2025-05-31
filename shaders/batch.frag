@@ -40,9 +40,13 @@ struct Ray {
 	vec3 p;
 	// NOTE(stekap): We use zero vector for direction to denote the invalid vector.
 	vec3 d;
+	vec3 n;
 	vec3 color;
 	vec3 attenuation;
 };
+
+// Adjust when the ray struct changes.
+#define RAY_SIZE_IN_VEC4 5
 
 bool ray_invalid(Ray ray) {
 	return ray.d == vec3(0.0, 0.0, 0.0);
@@ -56,6 +60,7 @@ struct Material {
 	vec3 reflectance;
 	float scatter;
 	vec3 emittance;
+	unsigned int flags;
 };
 
 in vec3 position;
@@ -84,30 +89,32 @@ uniform Camera camera;
 
 // width * height * sizeof(Ray)
 // Ray coordinates for the current fragment is defined by fragment coords.
-// Every ray takes 4 float vec4.
+// Every ray takes 5 float vec4 (for now).
 // One dot '.' represents one float vec4.
-// . . . . | . . . . | . . . . |
-// . . . . | . . . . | . . . . |
-// . . . . | . . . . | . . . . |
+// . . . . . | . . . . . | . . . . . |
+// . . . . . | . . . . . | . . . . . |
+// . . . . . | . . . . . | . . . . . |
 // (0, 0) is at the bottom left.
 layout (rgba32f, binding = 0) coherent uniform image2D batch_state;
 
 Ray ray_load() {
-	int X = 4 * int(gl_FragCoord.x);
-	int Y =     int(gl_FragCoord.y);
+	int X = RAY_SIZE_IN_VEC4 * int(gl_FragCoord.x);
+	int Y =                    int(gl_FragCoord.y);
 	return Ray(imageLoad(batch_state, ivec2(X+0, Y)).xyz,
 			   imageLoad(batch_state, ivec2(X+1, Y)).xyz,
 			   imageLoad(batch_state, ivec2(X+2, Y)).xyz,
-			   imageLoad(batch_state, ivec2(X+3, Y)).xyz);
+			   imageLoad(batch_state, ivec2(X+3, Y)).xyz,
+			   imageLoad(batch_state, ivec2(X+4, Y)).xyz);
 }
 
 void ray_store(Ray ray) {
-	int X = 4 * int(gl_FragCoord.x);
-	int Y =     int(gl_FragCoord.y);
+	int X = RAY_SIZE_IN_VEC4 * int(gl_FragCoord.x);
+	int Y =                    int(gl_FragCoord.y);
 	imageStore(batch_state, ivec2(X+0, Y), vec4(ray.p,           0.0));
 	imageStore(batch_state, ivec2(X+1, Y), vec4(ray.d,           0.0));
-	imageStore(batch_state, ivec2(X+2, Y), vec4(ray.color,       1.0));
-	imageStore(batch_state, ivec2(X+3, Y), vec4(ray.attenuation, 0.0));
+	imageStore(batch_state, ivec2(X+2, Y), vec4(ray.n,           0.0));
+	imageStore(batch_state, ivec2(X+3, Y), vec4(ray.color,       1.0));
+	imageStore(batch_state, ivec2(X+4, Y), vec4(ray.attenuation, 0.0));
 }
 
 layout (rgba32f, binding = 1) coherent uniform image2D final_colors;
@@ -294,8 +301,12 @@ void main() {
 		vec3 time_vec = vec3(time, time, time);
 
 		vec3 pixel_p_perturbed = pixel_p + 0.5*random_in_range(time_vec, time + 0.1, -pixel_width, pixel_width)*camera.x + 0.5*random_in_range(time_vec, time + 0.2, -pixel_height, pixel_height)*camera.y;
-		
-		Ray ray = {focus, normalize(pixel_p_perturbed - focus), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
+
+		// Set the normal to be the same as direction for the initial ray i.e. ray comming from the camera focus.
+		// This way, we know that the normal will not impact the calculation for the first hit, since there will
+		// be no scaling with cosine term (since dot(direction, normal) = 1 in that case).
+		vec3 ray_direction = normalize(pixel_p_perturbed - focus);
+		Ray ray = {focus, ray_direction, ray_direction, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
 		
 		ray_store(ray);
 
@@ -304,6 +315,7 @@ void main() {
 
 	if(execution_type == EXECUTION_TYPE_TRACE) {
 		vec3 background_color = vec3(0.9, 0.9, 0.9);
+		// vec3 background_color = vec3(0.0, 0.0, 0.0);
 
 		Ray ray = ray_load();
 
@@ -313,20 +325,31 @@ void main() {
 
 		for(int jump_index = 0; jump_index < batch_jump_count; ++jump_index) {
 			float t = MAX_FLOAT;
-			int sphere_index = -1;
 			int triangle_index = -1;
+			int sphere_index = -1;
 
-			intersect_spheres(ray, sphere_index, t);
 			intersect_triangles(ray, triangle_index, t);
+			intersect_spheres(ray, sphere_index, t);
 
 			if(triangle_index >= 0) {
+				Triangle triangle = triangles[triangle_index];
+				Material material = materials[triangle.mat_index];
+
+				// For multiple lights, we choose to sample one, based on the probability assigned to that light.
+				// Probability is assigned to potential effect that the light can have on the given point.
+				// An example of such probability (not normalized) would be:
+				// light_area * light_power * dot(light_n, light_ray) / r^2
+				
+				if(material.flags == 1) {
+					ray.color += ray.attenuation * material.emittance;
+					ray_invalidate(ray);
+				}
+
 				ray.p = ray.p + t*ray.d;
-				vec3 normal = triangle_normal(triangles[triangle_index]);
+				vec3 normal = triangle_normal(triangle);
 				ray.d = reflect(ray.d, normal);
 
-				ray.d = mix(ray.d,
-							random_unit_vector_in_hemisphere(ray.p, time, normal),
-							materials[triangles[triangle_index].mat_index].scatter);
+				ray.d = mix(ray.d, random_unit_vector_in_hemisphere(ray.p, time, normal), material.scatter);
 
 				if(dot(ray.d, normal) < 0) {
 					ray.p -= BIAS*normal;
@@ -338,19 +361,20 @@ void main() {
 				// TODO(stekap): Cosine term, inverse square law....
 
 				// Collect emittance.
-				ray.color += ray.attenuation * materials[triangles[triangle_index].mat_index].emittance;
+				ray.color += ray.attenuation * material.emittance;
 
 				// Collect attenuation.
-				ray.attenuation *= materials[triangles[triangle_index].mat_index].reflectance;
+				ray.attenuation *= material.reflectance;
 			}
 			else if(sphere_index >= 0) {
+				Sphere sphere     = spheres[sphere_index];
+				Material material = materials[sphere.mat_index];
+				
 				ray.p = ray.p + t*ray.d;
-				vec3 normal = normalize(ray.p - spheres[sphere_index].p);
+				vec3 normal = normalize(ray.p - sphere.p);
 				ray.d = reflect(ray.d, normal);
 
-				ray.d = mix(ray.d,
-							random_unit_vector_in_hemisphere(ray.p, time, normal),
-							materials[spheres[sphere_index].mat_index].scatter);
+				ray.d = mix(ray.d, random_unit_vector_in_hemisphere(ray.p, time, normal), material.scatter);
 				
 				if(dot(ray.d, normal) < 0) {
 					ray.p -= BIAS*normal;
@@ -362,9 +386,9 @@ void main() {
 				// TODO(stekap): Cosine term, inverse square law....
 
 				// Collect emittance.
-				ray.color += ray.attenuation * materials[spheres[sphere_index].mat_index].emittance;
+				ray.color += ray.attenuation * material.emittance;
 				// Collect attenuation.
-				ray.attenuation *= materials[spheres[sphere_index].mat_index].reflectance;
+				ray.attenuation *= material.reflectance;
 			}
 			else {
 				// Add because the sky behaves like emitter.
