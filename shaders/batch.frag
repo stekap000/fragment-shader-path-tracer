@@ -314,8 +314,8 @@ void main() {
 	}
 
 	if(execution_type == EXECUTION_TYPE_TRACE) {
-		vec3 background_color = vec3(0.9, 0.9, 0.9);
-		// vec3 background_color = vec3(0.0, 0.0, 0.0);
+		// vec3 background_color = vec3(0.9, 0.9, 0.9);
+		vec3 background_color = vec3(0.0, 0.0, 0.0);
 
 		Ray ray = ray_load();
 
@@ -335,36 +335,48 @@ void main() {
 				Triangle triangle = triangles[triangle_index];
 				Material material = materials[triangle.mat_index];
 
-				// For multiple lights, we choose to sample one, based on the probability assigned to that light.
-				// Probability is assigned to potential effect that the light can have on the given point.
-				// An example of such probability (not normalized) would be:
-				// light_area * light_power * dot(light_n, light_ray) / r^2
-				
-				if(material.flags == 1) {
-					ray.color += ray.attenuation * material.emittance;
-					ray_invalidate(ray);
-				}
-
-				ray.p = ray.p + t*ray.d;
 				vec3 normal = triangle_normal(triangle);
-				ray.d = reflect(ray.d, normal);
+				Ray next_ray;
+				next_ray.p = ray.p + t*ray.d;
 
-				ray.d = mix(ray.d, random_unit_vector_in_hemisphere(ray.p, time, normal), material.scatter);
-
+				// TODO(stekap): Adhoc. Revisit when dielectric handling is introduced.
 				if(dot(ray.d, normal) < 0) {
-					ray.p -= BIAS*normal;
+					next_ray.p -= BIAS*normal;
 				}
 				else {
-					ray.p += BIAS*normal;
+					next_ray.p += BIAS*normal;
 				}
+				
+				next_ray.d = reflect(ray.d, normal);
+				next_ray.d = mix(next_ray.d, random_unit_vector_in_hemisphere(next_ray.p, time, normal), material.scatter);
+				next_ray.n = normal;
+				next_ray.color = ray.color;
+				next_ray.attenuation = ray.attenuation;
 
-				// TODO(stekap): Cosine term, inverse square law....
+				// TODO(stekap):
+				// For multiple lights, we choose to directly sample one, based on the probability assigned to that light.
+				// Alternatively, we could choose more than one and average the results.
+				// Probability is assigned based on the effect that the light can have on the given point (here, we can
+				// also take into account the photometric effect rather than radiometric).
+				// An example of such probability (not normalized) would be:
+				// light_area * light_power * cos(theta1) * cos(theta2) / r^2
+
+				// TODO(stekap): This is just for testing before direct sampling. Will change.
+				float radiance_scaling = dot(-ray.d, normal) * dot(ray.d, ray.n);
 
 				// Collect emittance.
-				ray.color += ray.attenuation * material.emittance;
-
+				next_ray.color += ray.attenuation * material.emittance * radiance_scaling;
+				
 				// Collect attenuation.
-				ray.attenuation *= material.reflectance;
+				next_ray.attenuation *= material.reflectance;
+				
+				// TODO(stekap): If it is emitter, then don't jump further. Will change.
+				if(material.flags == 1) {
+					ray_invalidate(ray);
+					return;
+				}
+				
+				ray = next_ray;
 			}
 			else if(sphere_index >= 0) {
 				Sphere sphere     = spheres[sphere_index];
@@ -382,8 +394,6 @@ void main() {
 				else {
 					ray.p += BIAS*normal;
 				}
-
-				// TODO(stekap): Cosine term, inverse square law....
 
 				// Collect emittance.
 				ray.color += ray.attenuation * material.emittance;

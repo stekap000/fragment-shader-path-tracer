@@ -31,16 +31,16 @@ typedef double                 f64;
 Internal int width  = 800;
 Internal int height = 800;
 
-namespace Util {
-	struct StandardTime {
+namespace Time {
+	struct Standard {
 		u32 h;
 		u32 m;
 		u32 s;
 
-		StandardTime() {}
+		Standard() {}
 
-		static StandardTime from_seconds(u64 seconds) {
-			StandardTime time;
+		static Standard from_seconds(u64 seconds) {
+			Standard time;
 			time.h = (u32)(seconds/3600);
 			seconds -= time.h*3600;
 			time.m = (u32)(seconds/60);
@@ -49,6 +49,10 @@ namespace Util {
 			return time;
 		}
 	};
+
+	double now() {
+		return glfwGetTime();
+	}
 };
 
 namespace Log {
@@ -71,7 +75,7 @@ namespace Log {
 	}
 
 	void percent_done_and_estimated_wait(f64 percent_done, f64 estimated_wait) {
-		Util::StandardTime time = Util::StandardTime::from_seconds((u64)estimated_wait);
+		Time::Standard time = Time::Standard::from_seconds((u64)estimated_wait);
 		printf("\rPercent done           : %05.2lf%% (Estimated wait time: %02d:%02d:%02d)", percent_done, time.h, time.m, time.s);
 		fflush(stdout);
 	}
@@ -573,17 +577,17 @@ struct Tracer {
 		__ignore__(final_colors_texture);
 	
 		u32 jumps_done = 0;
-		double time_start = glfwGetTime();
+		double time_start = Time::now();
 		double ray_time_start;
 		double total_ray_time = 0;
 		double percent_done = 0;
 		double estimated_wait = 0;
 		for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
-			ray_time_start = glfwGetTime();
+			ray_time_start = Time::now();
 			
 			glUniform1ui(glGetUniformLocation(program, "processed_ray_count"), ray_index + 1);
 		
-			glUniform1f(time_uniform_location, (f32)glfwGetTime());
+			glUniform1f(time_uniform_location, (f32)Time::now());
 			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
 		
 			for(u32 batch_index = 0; batch_index < batch_count; ++batch_index) {
@@ -593,17 +597,18 @@ struct Tracer {
 		
 			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
 
-			total_ray_time += glfwGetTime() - ray_time_start;
+			total_ray_time += Time::now() - ray_time_start;
 			
 			if(!debug) {
 				glfwSwapBuffers(window);
 				percent_done   = (f64)jumps_done * 100 / (f64)(ray_count*ray_jump_count);
 				estimated_wait = (total_ray_time / (ray_index + 1)) * (ray_count - ray_index - 1);
+				
 				Log::percent_done_and_estimated_wait(percent_done, estimated_wait);
 			}
 		}
 
-		double total_time = glfwGetTime() - time_start;
+		double total_time = Time::now() - time_start;
 
 		if(!debug) {
 			std::cout << std::endl;
@@ -620,7 +625,7 @@ struct Tracer {
 		double time_start;
 		double time_end;
 
-		time_start = glfwGetTime();
+		time_start = Time::now();
 		while(!glfwWindowShouldClose(window))
 		{
 			if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
@@ -631,7 +636,7 @@ struct Tracer {
 				std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 			}
 
-			glUniform1f(time_uniform_location, (f32)glfwGetTime());
+			glUniform1f(time_uniform_location, (f32)Time::now());
 			glUniform1f(width_uniform_location, (f32)width);
 			glUniform1f(height_uniform_location, (f32)height);
 			
@@ -645,7 +650,7 @@ struct Tracer {
 
 			glfwPollEvents();
 
-			time_end = glfwGetTime();
+			time_end = Time::now();
 			glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
 			time_start = time_end;
 		}
