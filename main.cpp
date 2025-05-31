@@ -31,6 +31,26 @@ typedef double                 f64;
 Internal int width  = 800;
 Internal int height = 800;
 
+namespace Util {
+	struct StandardTime {
+		u32 h;
+		u32 m;
+		u32 s;
+
+		StandardTime() {}
+
+		static StandardTime from_seconds(u64 seconds) {
+			StandardTime time;
+			time.h = (u32)(seconds/3600);
+			seconds -= time.h*3600;
+			time.m = (u32)(seconds/60);
+			seconds -= time.m*60;
+			time.s = (u32)seconds;
+			return time;
+		}
+	};
+};
+
 namespace Log {
 	void batching_configuration(u32 ray_count, u32 batch_count, u32 ray_jump_count, u32 batch_jump_count) {
 		std::cout << "----------------------------------------" << std::endl;
@@ -41,7 +61,7 @@ namespace Log {
 		std::cout << "----------------------------------------" << std::endl;
 	}
 
-	void measured_timings(double total_time, u32 ray_count, u32 batch_count) {
+	void measured_timings(f64 total_time, u32 ray_count, u32 batch_count) {
 		std::cout << "----------------------------------------" << std::endl;
 		std::cout << "Total time             : " << total_time << "s" << std::endl;
 		std::cout << "Average time per ray   : " << total_time / (ray_count*width*height) << "s" << std::endl;
@@ -50,8 +70,9 @@ namespace Log {
 		std::cout << "----------------------------------------" << std::endl;
 	}
 
-	void percent_done(u32 jumps_done, u32 ray_count, u32 ray_jump_count) {
-		printf("\rPercent done           : %05.2f%%", (f32)jumps_done * 100 / (f32)(ray_count*ray_jump_count));
+	void percent_done_and_estimated_wait(f64 percent_done, f64 estimated_wait) {
+		Util::StandardTime time = Util::StandardTime::from_seconds((u64)estimated_wait);
+		printf("\rPercent done           : %05.2lf%% (Estimated wait time: %02d:%02d:%02d)", percent_done, time.h, time.m, time.s);
 		fflush(stdout);
 	}
 };
@@ -396,8 +417,8 @@ struct Scene {
 		std::vector<Material> materials;
 
 		// Light
-		triangles.push_back(Triangle({343.0f, 548.5f, -227.0f}, {213.0f, 548.5f, -227.2f}, {343.0f, 548.5f, -332.0f}, 3));
-		triangles.push_back(Triangle({213.0f, 548.5f, -227.2f}, {213.0f, 548.5f, -332.0f} , {343.0f, 548.5f, -332.0f}, 3));
+		triangles.push_back(Triangle({343.0f, 548.79f, -227.0f}, {213.0f, 548.79f, -227.2f}, {343.0f, 548.79f, -332.0f}, 3));
+		triangles.push_back(Triangle({213.0f, 548.79f, -227.2f}, {213.0f, 548.79f, -332.0f} , {343.0f, 548.79f, -332.0f}, 3));
 
 		// Back wall
 		triangles.push_back(Triangle({0.0f, 0.0f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 548.8f, -559.2f}, 0));
@@ -464,7 +485,7 @@ struct Scene {
 		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // White
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Green
-		materials.push_back(Material({0.6f, 0.6f, 0.6f}, {3.0f, 3.0f, 3.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
+		materials.push_back(Material({0.6f, 0.6f, 0.6f}, {1000.0f, 1000.0f, 1000.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
 
 		return Scene(spheres, triangles, materials);
 	}
@@ -553,7 +574,13 @@ struct Tracer {
 	
 		u32 jumps_done = 0;
 		double time_start = glfwGetTime();
+		double ray_time_start;
+		double total_ray_time = 0;
+		double percent_done = 0;
+		double estimated_wait = 0;
 		for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
+			ray_time_start = glfwGetTime();
+			
 			glUniform1ui(glGetUniformLocation(program, "processed_ray_count"), ray_index + 1);
 		
 			glUniform1f(time_uniform_location, (f32)glfwGetTime());
@@ -565,10 +592,14 @@ struct Tracer {
 			}
 		
 			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
+
+			total_ray_time += glfwGetTime() - ray_time_start;
 			
 			if(!debug) {
 				glfwSwapBuffers(window);
-				Log::percent_done(jumps_done, ray_count, ray_jump_count);
+				percent_done   = (f64)jumps_done * 100 / (f64)(ray_count*ray_jump_count);
+				estimated_wait = (total_ray_time / (ray_index + 1)) * (ray_count - ray_index - 1);
+				Log::percent_done_and_estimated_wait(percent_done, estimated_wait);
 			}
 		}
 
@@ -636,8 +667,8 @@ int main(int arg_count, char** args) {
 	// Scene scene   = Scene::test_scene();
 	// Camera camera = Camera::test_scene();
 	
-	u32 ray_count        = 256;
-	u32 ray_jump_count   = 256;
+	u32 ray_count        = 1024;
+	u32 ray_jump_count   = 1024;
 	u32 batch_jump_count = 128;
 	
 	u32 program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
