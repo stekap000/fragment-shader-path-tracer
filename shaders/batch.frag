@@ -147,6 +147,24 @@ layout (std140, binding = 2) uniform Materials {
 	Material materials[MAX_MATERIAL_COUNT];
 };
 
+// NOTE(stekap): LFSR_Rand_Gen is from: https://www.geeks3d.com/20100831/shader-library-noise-and-pseudo-random-number-generator-in-glsl/
+//               The rest is custom made based on testing.
+
+int LFSR_Rand_Gen(in int n)
+{
+  n = (n << 13) ^ n; 
+  return (n * (n*n*15731+789221) + 1376312589) & 0x7fffffff;
+}
+
+float LFSR_Rand_Gen_f(in int n) {
+	int x = LFSR_Rand_Gen(n);
+	return float(sign(x)*x) / 2147483648;
+}
+
+float hash(vec3 xyz) {
+	return fract(LFSR_Rand_Gen_f(int(dot(xyz, vec3(73719.123, 79.63401, 5527.8102)))));
+}
+
 // NOTE(stekap): Both hashes below seem decent. Distribution is geared towards the middle of the
 //               [0, 1] range. First one seems to have worse distribution than the second but is a bit faster.
 //               Constructed using ideas and tool from "https://thebookofshaders.com/10/".
@@ -154,9 +172,9 @@ layout (std140, binding = 2) uniform Materials {
 //               Second constructed is smoothstep(0.0, 1.0, fract(tan(x)*1000.0)).
 //               Then they are adjusted to depend on the 3d point.
 
-float hash(vec3 xyz) {
-	return fract(tan(dot(xyz, vec3(12.9898, 78.233, 1.61803398)))*1000.0);
-}
+// float hash(vec3 xyz) {
+// 	return fract(tan(dot(xyz, vec3(12.9898, 78.233, 1.61803398)))*989.748192);
+// }
 
 // float hash(vec3 xyz) {
 // 	return smoothstep(0.0, 1.0, fract(tan(dot(xyz, vec3(12.9898, 78.233, 1.61803398)))*1000.000));
@@ -347,8 +365,10 @@ void main() {
 					next_ray.p += BIAS*normal;
 				}
 				
-				next_ray.d = reflect(ray.d, normal);
-				next_ray.d = mix(next_ray.d, random_unit_vector_in_hemisphere(next_ray.p, time, normal), material.scatter);
+				next_ray.d = mix(reflect(ray.d, normal),
+								 random_unit_vector_in_hemisphere(next_ray.p, time, normal),
+								 material.scatter);
+
 				next_ray.n = normal;
 				next_ray.color = ray.color;
 				next_ray.attenuation = ray.attenuation;
@@ -362,21 +382,21 @@ void main() {
 				// light_area * light_power * cos(theta1) * cos(theta2) / r^2
 
 				// TODO(stekap): This is just for testing before direct sampling. Will change.
-				float radiance_scaling = dot(-ray.d, normal) * dot(ray.d, ray.n);
+				// float radiance_scaling = dot(-ray.d, normal) * dot(ray.d, ray.n);
+				float radiance_scaling = dot(-ray.d, normal);
 
 				// Collect emittance.
 				next_ray.color += ray.attenuation * material.emittance * radiance_scaling;
-				
+
 				// Collect attenuation.
 				next_ray.attenuation *= material.reflectance;
+
+				ray = next_ray;
 				
 				// TODO(stekap): If it is emitter, then don't jump further. Will change.
 				if(material.flags == 1) {
 					ray_invalidate(ray);
-					return;
 				}
-				
-				ray = next_ray;
 			}
 			else if(sphere_index >= 0) {
 				Sphere sphere     = spheres[sphere_index];
@@ -417,7 +437,9 @@ void main() {
 	if(execution_type == EXECUTION_TYPE_INCLUDE_RAY_COLOR) {
 		Ray ray = ray_load();
 
-		vec4 color = color_load() + vec4((ray.attenuation * ray.color) / ray_count, 1.0);
+		// NOTE(stekap): We could maybe sample some light at the end of ray tracing for the current ray
+		//               here, and add ray.attenuation*(sampled light) to the ray.color below.
+		vec4 color = color_load() + vec4(ray.color / ray_count, 1.0);
 		color_store(color);
 
 		// NOTE(stekap): This allows us to properly show image generation in real time.
