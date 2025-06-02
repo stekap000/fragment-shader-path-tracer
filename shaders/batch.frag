@@ -131,6 +131,16 @@ void color_store(vec4 color) {
 	imageStore(final_colors, ivec2(X, Y), color);
 }
 
+vec4 color_linear_to_sRGB(vec4 color) {
+	// https://gamedev.stackexchange.com/questions/92015/optimized-linear-to-srgb-glsl
+	// https://entropymine.com/imageworsener/srgbformula/
+
+	bvec3 cutoff = lessThan(color.rgb, vec3(0.0031308));
+	vec3 higher = vec3(1.055)*pow(color.rgb, vec3(1.0/2.4)) - vec3(0.055);
+	vec3 lower = color.rgb * vec3(12.92);
+	return vec4(mix(higher, lower, cutoff), color.a);
+}
+
 // TODO(stekap): Light sources should somehow be grouped together when we start using direct light sampling.
 //               Currently, it is not obvious what would be the efficient way for this, since in general,
 //               these objects will have different type.
@@ -149,6 +159,9 @@ layout (std140, binding = 2) uniform Materials {
 
 // NOTE(stekap): LFSR_Rand_Gen is from: https://www.geeks3d.com/20100831/shader-library-noise-and-pseudo-random-number-generator-in-glsl/
 //               The rest is custom made based on testing.
+
+// TODO(stekap): Random number generator starts acting very weird and slows down after some number of iterations.
+//               Not clear yet which part is the cause of this.
 
 int LFSR_Rand_Gen(in int n)
 {
@@ -305,21 +318,32 @@ void intersect_triangles(inout Ray ray, inout int triangle_index, inout float t)
 	}
 }
 
+// TODO(stekap):
+// For multiple lights, we choose to directly sample one, based on the probability assigned to that light.
+// Alternatively, we could choose more than one and average the results.
+// Probability is assigned based on the effect that the light can have on the given point (here, we can
+// also take into account the photometric effect rather than radiometric).
+// An example of such probability (not normalized) would be:
+// light_area * light_power * cos(theta1) * cos(theta2) / r^2
+
+// TODO(stekap): Direct light sampling is hardcoded for now. Change this after deciding on how the lights should be
+//               organized in memory.
 void direct_light_sample(inout Ray next_ray) {
 	float t = MAX_FLOAT;
 	int triangle_index = -1;
 	
 	Ray light_ray = next_ray;
-	// light_ray.d = normalize(vec3(278.0, 548.8, -275.0) - light_ray.p);
-	light_ray.d = normalize(vec3(278.0, 548.8, -275.0) - light_ray.p);
-	//light_ray.d = mix(light_ray.d, light_ray.d + vec3(65.0, 0.0, -67), random_0_to_1(light_ray.p, time));
 	
+	vec3 light_dir = vec3(278.0, 548.8, -275.0) - light_ray.p;
+	
+	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
+
 	intersect_triangles(light_ray, triangle_index, t);
 	
 	if(triangle_index == 0 || triangle_index == 1) {
 		float radiance_scaling = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
 		
-		next_ray.color += light_ray.attenuation * materials[triangles[0].mat_index].emittance * radiance_scaling;
+		next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * radiance_scaling;
 	}
 }
 
@@ -391,16 +415,6 @@ void main() {
 				next_ray.color = ray.color;
 				next_ray.attenuation = ray.attenuation;
 
-				// TODO(stekap):
-				// For multiple lights, we choose to directly sample one, based on the probability assigned to that light.
-				// Alternatively, we could choose more than one and average the results.
-				// Probability is assigned based on the effect that the light can have on the given point (here, we can
-				// also take into account the photometric effect rather than radiometric).
-				// An example of such probability (not normalized) would be:
-				// light_area * light_power * cos(theta1) * cos(theta2) / r^2
-
-				// TODO(stekap): This is just for testing before direct sampling. Will change.
-				// float radiance_scaling = dot(-ray.d, normal) * dot(ray.d, ray.n);
 				float radiance_scaling = dot(ray.d, ray.n) * dot(-ray.d, normal) / pow(distance(next_ray.p, ray.p), 2);
 
 				// Collect emittance.
@@ -416,6 +430,7 @@ void main() {
 				// TODO(stekap): If it is emitter, then don't jump further. Will change.
 				if(material.flags == 1) {
 					ray_invalidate(ray);
+					break;
 				}
 			}
 			else if(sphere_index >= 0) {
@@ -459,7 +474,7 @@ void main() {
 
 		// NOTE(stekap): We could maybe sample some light at the end of ray tracing for the current ray
 		//               here, and add ray.attenuation*(sampled light) to the ray.color below.
-		vec4 color = color_load() + vec4(ray.color / ray_count, 1.0);
+		vec4 color = color_load() + vec4(ray.color/ray_count, 1.0);
 		color_store(color);
 
 		// NOTE(stekap): This allows us to properly show image generation in real time.
