@@ -305,6 +305,24 @@ void intersect_triangles(inout Ray ray, inout int triangle_index, inout float t)
 	}
 }
 
+void direct_light_sample(inout Ray next_ray) {
+	float t = MAX_FLOAT;
+	int triangle_index = -1;
+	
+	Ray light_ray = next_ray;
+	// light_ray.d = normalize(vec3(278.0, 548.8, -275.0) - light_ray.p);
+	light_ray.d = normalize(vec3(278.0, 548.8, -275.0) - light_ray.p);
+	//light_ray.d = mix(light_ray.d, light_ray.d + vec3(65.0, 0.0, -67), random_0_to_1(light_ray.p, time));
+	
+	intersect_triangles(light_ray, triangle_index, t);
+	
+	if(triangle_index == 0 || triangle_index == 1) {
+		float radiance_scaling = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
+		
+		next_ray.color += light_ray.attenuation * materials[triangles[0].mat_index].emittance * radiance_scaling;
+	}
+}
+
 void main() {
 	float pixel_width = 2.0/width;
 	float pixel_height = 2.0/height;
@@ -383,13 +401,15 @@ void main() {
 
 				// TODO(stekap): This is just for testing before direct sampling. Will change.
 				// float radiance_scaling = dot(-ray.d, normal) * dot(ray.d, ray.n);
-				float radiance_scaling = dot(-ray.d, normal);
+				float radiance_scaling = dot(ray.d, ray.n) * dot(-ray.d, normal) / pow(distance(next_ray.p, ray.p), 2);
 
 				// Collect emittance.
 				next_ray.color += ray.attenuation * material.emittance * radiance_scaling;
 
 				// Collect attenuation.
 				next_ray.attenuation *= material.reflectance;
+
+				direct_light_sample(next_ray);
 
 				ray = next_ray;
 				

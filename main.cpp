@@ -489,7 +489,7 @@ struct Scene {
 		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // White
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Green
-		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {80.0f, 80.0f, 50.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
+		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {100000.0f, 100000.0f, 70000.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
 
 		return Scene(spheres, triangles, materials);
 	}
@@ -672,9 +672,9 @@ int main(int arg_count, char** args) {
 	// Scene scene   = Scene::test_scene();
 	// Camera camera = Camera::test_scene();
 	
-	u32 ray_count        = 1024;
-	u32 ray_jump_count   = 128;
-	u32 batch_jump_count = 128;
+	u32 ray_count        = 128;
+	u32 ray_jump_count   = 64;
+	u32 batch_jump_count = 64;
 	
 	u32 program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
 	
