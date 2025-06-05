@@ -287,15 +287,15 @@ enum : u32 {
 };
 
 struct Material {
-	V3 reflectance;
+	V3 albedo;
 	f32 scatter;
 	V3 emittance;
 	// TODO(stekap): Currently, flags is more for testing. Maybe remove, maybe expand.
 	u32 flags;
 
 	Material() {}
-	Material(V3 reflectance, V3 emittance, f32 scatter, u32 flags)
-		: reflectance(reflectance), emittance(emittance), scatter(scatter) {}
+	Material(V3 albedo, V3 emittance, f32 scatter, u32 flags)
+		: albedo(albedo), emittance(emittance), scatter(scatter) {}
 };
 
 struct Sphere {
@@ -489,7 +489,8 @@ struct Scene {
 		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // White
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Green
-		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {150000.0f, 150000.0f, 80000.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
+		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {30.0f, 30.0f, 22.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
+		// materials.push_back(Material({0.6f, 0.6f, 0.2f}, {150000.0f, 150000.0f, 80000.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
 
 		return Scene(spheres, triangles, materials);
 	}

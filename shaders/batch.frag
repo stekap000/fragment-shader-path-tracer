@@ -8,6 +8,7 @@
 #define MAX_SPHERE_COUNT   32
 #define MAX_MATERIAL_COUNT 32
 #define MAX_TRIANGLE_COUNT 32
+#define PI                 3.14159265358979323846
 
 struct Sphere {
 	vec3 p;
@@ -57,7 +58,7 @@ void ray_invalidate(inout Ray ray) {
 }
 
 struct Material {
-	vec3 reflectance;
+	vec3 albedo;
 	float scatter;
 	vec3 emittance;
 	unsigned int flags;
@@ -367,6 +368,7 @@ void main() {
 		// be no scaling with cosine term (since dot(direction, normal) = 1 in that case).
 		vec3 ray_direction = normalize(pixel_p_perturbed - focus);
 		Ray ray = {focus, ray_direction, ray_direction, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
+
 		
 		ray_store(ray);
 
@@ -415,15 +417,34 @@ void main() {
 				next_ray.color = ray.color;
 				next_ray.attenuation = ray.attenuation;
 
-				float radiance_scaling = dot(ray.d, ray.n) * dot(-ray.d, normal) / pow(distance(next_ray.p, ray.p), 2);
+				//float radiance_scaling = dot(ray.d, ray.n) * dot(-ray.d, normal) / pow(distance(next_ray.p, ray.p), 2);
+
+				// MODEL_ASSUMPTION: Li(x, wi) = Li(r(x, wi), -wi), where r is the tracing function.
+				//                   This means that we have not yet taken into account the energy dissipation (expressed by
+				//                   inverse square law) that is the result of ray traveling through the medium.
+				float radiance_scaling = dot(ray.d, ray.n); // <--- cos(theta) radiance scaling under integral
+
+				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Li1)
+				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Lo2)
+				//     = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*(material.emittance2 + (BRDF2/prob2)*cos(theta2)*Li2))
+				//
+				// <=> Lo1 = (1/n)SUM(material.emittance1*attenuation0 + attenuation1*(material.emittance2 + ...))
+				
+				// attenuation0 = 1
+				// attenuation1 = (BRDF1/prob1)*cos(theta1)
+				// attenuation2 = (BRDF1/prob1)*cos(theta1) * (BRDF2/prob2)*cos(theta2)
+				// ...
 
 				// Collect emittance.
-				next_ray.color += ray.attenuation * material.emittance * radiance_scaling;
+				next_ray.color += ray.attenuation * material.emittance;
 
+				float sampling_probability = 1 / (2*PI);
+				vec3 BRDF = material.albedo / PI;
+				
 				// Collect attenuation.
-				next_ray.attenuation *= material.reflectance;
+				next_ray.attenuation *= (BRDF / sampling_probability) * radiance_scaling;
 
-				direct_light_sample(next_ray);
+				// direct_light_sample(next_ray);
 
 				ray = next_ray;
 				
@@ -453,7 +474,7 @@ void main() {
 				// Collect emittance.
 				ray.color += ray.attenuation * material.emittance;
 				// Collect attenuation.
-				ray.attenuation *= material.reflectance;
+				ray.attenuation *= material.albedo;
 			}
 			else {
 				// Add because the sky behaves like emitter.
