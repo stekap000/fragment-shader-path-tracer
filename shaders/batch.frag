@@ -158,11 +158,18 @@ layout (std140, binding = 2) uniform Materials {
 	Material materials[MAX_MATERIAL_COUNT];
 };
 
+// TODO(stekap): Program starts acting very weird and slows down during execution, while green dots appear on the screen (some
+//               random colored dots later). For example, for tracing (1024, 128, 128) it starts appearing at around 50% completion.
+//               This happens when hash function contains this:
+//                   return fract(LFSR_Rand_Gen_f(int(dot(xyz, vec3(73719.123, 79.63401, 5527.8102)))));
+//               If it contains the following, then it works even for (1024, 1024, 256) (isolated green or red dots appear randomly):
+//                   return fract(LFSR_Rand_Gen_f(int(dot(xyz, vec3(9.812123, 79.63401, 5.8102)))));
+//               Since LFSR is based on feeding its output back to itself, meaning that the integer value that it produces is its state,
+//               we might get better results if we restructure the random functions such that that is taken into account (we would need
+//               to keep track of that state in main and pass it every time when some random function is called).
+
 // NOTE(stekap): LFSR_Rand_Gen is from: https://www.geeks3d.com/20100831/shader-library-noise-and-pseudo-random-number-generator-in-glsl/
 //               The rest is custom made based on testing.
-
-// TODO(stekap): Random number generator starts acting very weird and slows down after some number of iterations.
-//               Not clear yet which part is the cause of this.
 
 int LFSR_Rand_Gen(in int n)
 {
@@ -176,23 +183,8 @@ float LFSR_Rand_Gen_f(in int n) {
 }
 
 float hash(vec3 xyz) {
-	return fract(LFSR_Rand_Gen_f(int(dot(xyz, vec3(73719.123, 79.63401, 5527.8102)))));
+	return fract(LFSR_Rand_Gen_f(int(dot(xyz, vec3(9.812123, 79.63401, 5.8102)))));
 }
-
-// NOTE(stekap): Both hashes below seem decent. Distribution is geared towards the middle of the
-//               [0, 1] range. First one seems to have worse distribution than the second but is a bit faster.
-//               Constructed using ideas and tool from "https://thebookofshaders.com/10/".
-//               First constructed is fract(tan(x)*1000.0).
-//               Second constructed is smoothstep(0.0, 1.0, fract(tan(x)*1000.0)).
-//               Then they are adjusted to depend on the 3d point.
-
-// float hash(vec3 xyz) {
-// 	return fract(tan(dot(xyz, vec3(12.9898, 78.233, 1.61803398)))*989.748192);
-// }
-
-// float hash(vec3 xyz) {
-// 	return smoothstep(0.0, 1.0, fract(tan(dot(xyz, vec3(12.9898, 78.233, 1.61803398)))*1000.000));
-// }
 
 float random_0_to_1(vec3 xyz, float seed) {
 	return hash(seed*xyz);
@@ -329,6 +321,7 @@ void intersect_triangles(inout Ray ray, inout int triangle_index, inout float t)
 
 // TODO(stekap): Direct light sampling is hardcoded for now. Change this after deciding on how the lights should be
 //               organized in memory.
+
 void direct_light_sample(inout Ray next_ray) {
 	float t = MAX_FLOAT;
 	int triangle_index = -1;
@@ -340,12 +333,15 @@ void direct_light_sample(inout Ray next_ray) {
 	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
 
 	intersect_triangles(light_ray, triangle_index, t);
+
+	// Direct light sampling uses the area form of the integral in the rendering equation. This is why we don't just have scaling with
+	// one cosine term, but with two plus with the inverse of distance squared.
 	
-	if(triangle_index == 0 || triangle_index == 1) {
-		float radiance_scaling = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
-		
-		next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * radiance_scaling;
-	}
+	bool visibility = (triangle_index == 0 || triangle_index == 1);
+	float geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
+	float light_area = 13650;
+	float radiance_scaling = geometry * light_area;
+	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * float(visibility);
 }
 
 void main() {
@@ -359,7 +355,7 @@ void main() {
 
 		// NOTE(stekap): Something for generating random perturbation. Can be any vec3
 		//               that is different for different samples of the same pixel.
-		vec3 time_vec = vec3(time, time, time);
+		vec3 time_vec = vec3(time + 0.1, time + 0.2, time + 0.3);
 
 		vec3 pixel_p_perturbed = pixel_p + 0.5*random_in_range(time_vec, time + 0.1, -pixel_width, pixel_width)*camera.x + 0.5*random_in_range(time_vec, time + 0.2, -pixel_height, pixel_height)*camera.y;
 
@@ -368,7 +364,6 @@ void main() {
 		// be no scaling with cosine term (since dot(direction, normal) = 1 in that case).
 		vec3 ray_direction = normalize(pixel_p_perturbed - focus);
 		Ray ray = {focus, ray_direction, ray_direction, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
-
 		
 		ray_store(ray);
 
@@ -376,7 +371,7 @@ void main() {
 	}
 
 	if(execution_type == EXECUTION_TYPE_TRACE) {
-		// vec3 background_color = vec3(0.9, 0.9, 0.9);
+		// vec3 background_color = vec3(0.3, 0.3, 0.3);
 		vec3 background_color = vec3(0.0, 0.0, 0.0);
 
 		Ray ray = ray_load();
@@ -417,13 +412,9 @@ void main() {
 				next_ray.color = ray.color;
 				next_ray.attenuation = ray.attenuation;
 
-				//float radiance_scaling = dot(ray.d, ray.n) * dot(-ray.d, normal) / pow(distance(next_ray.p, ray.p), 2);
-
 				// MODEL_ASSUMPTION: Li(x, wi) = Li(r(x, wi), -wi), where r is the tracing function.
 				//                   This means that we have not yet taken into account the energy dissipation (expressed by
 				//                   inverse square law) that is the result of ray traveling through the medium.
-				float radiance_scaling = dot(ray.d, ray.n); // <--- cos(theta) radiance scaling under integral
-
 				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Li1)
 				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Lo2)
 				//     = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*(material.emittance2 + (BRDF2/prob2)*cos(theta2)*Li2))
@@ -434,9 +425,11 @@ void main() {
 				// attenuation1 = (BRDF1/prob1)*cos(theta1)
 				// attenuation2 = (BRDF1/prob1)*cos(theta1) * (BRDF2/prob2)*cos(theta2)
 				// ...
+				
+				float radiance_scaling = dot(ray.d, ray.n); // <--- cos(theta) radiance scaling under integral
 
-				// Collect emittance.
-				next_ray.color += ray.attenuation * material.emittance;
+				// Color is the radiance of 3 frequencies.
+				next_ray.color += ray.attenuation * material.emittance * 2;
 
 				float sampling_probability = 1 / (2*PI);
 				vec3 BRDF = material.albedo / PI;
@@ -444,7 +437,7 @@ void main() {
 				// Collect attenuation.
 				next_ray.attenuation *= (BRDF / sampling_probability) * radiance_scaling;
 
-				// direct_light_sample(next_ray);
+				direct_light_sample(next_ray);
 
 				ray = next_ray;
 				
@@ -500,6 +493,8 @@ void main() {
 
 		// NOTE(stekap): This allows us to properly show image generation in real time.
 		fragment_color = vec4((color.xyz*ray_count)/processed_ray_count, 1);
+
+		// fragment_color = color_linear_to_sRGB(fragment_color);
 
 		return;
 	}
