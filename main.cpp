@@ -489,8 +489,10 @@ struct Scene {
 		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // White
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Green
-		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {30.0f, 30.0f, 22.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
-		// materials.push_back(Material({0.6f, 0.6f, 0.2f}, {150000.0f, 150000.0f, 80000.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
+		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
+		// NOTE(stekap): These commented values for light were used when there is no direct light sampling, in order to make
+		//               the scene less dark, since the probability of hitting the light randomly is not large.
+		// materials.push_back(Material({0.6f, 0.6f, 0.2f}, {25.0f, 25.0f, 15.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
 
 		return Scene(spheres, triangles, materials);
 	}
@@ -507,9 +509,10 @@ struct Tracer {
 	u32 materials_ub;
 
 	enum : u32 {
-		EXECUTION_TYPE_INITIALIZE,
-		EXECUTION_TYPE_TRACE,
-		EXECUTION_TYPE_INCLUDE_RAY_COLOR,
+		EXECUTION_TYPE_INITIALIZE         = 0,
+		EXECUTION_TYPE_TRACE              = 1,
+		EXECUTION_TYPE_INCLUDE_RAY_COLOR  = 2,
+		EXECUTION_TYPE_CONVERT_TO_SRGB    = 3
 	};
 
 	Tracer() {}
@@ -614,6 +617,8 @@ struct Tracer {
 		if(!debug) {
 			std::cout << std::endl;
 			Log::measured_timings(total_time, ray_count, batch_count);
+			
+			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_CONVERT_TO_SRGB);
 			IO::save_final_output("generated_image.png");
 		}
 	}
@@ -660,20 +665,18 @@ struct Tracer {
 
 int main(int arg_count, char** args) {
 	// False in window creating means that it will be hidden i.e. we will only have console output during generation.
-	GLFWwindow* window = Window::create(500, 500, true);
-	
+	GLFWwindow* window = Window::create(400, 400, true);
+
 	if(!window) {
-		return - 1;
+		return -1;
 	}
 
 	OpenGL::initialize_tracer_rectangle();
 	
 	Scene scene   = Scene::cornell_box();
 	Camera camera = Camera::cornell_box();
-	// Scene scene   = Scene::test_scene();
-	// Camera camera = Camera::test_scene();
 	
-	u32 ray_count        = 512;
+	u32 ray_count        = 1024;
 	u32 ray_jump_count   = 128;
 	u32 batch_jump_count = 128;
 	

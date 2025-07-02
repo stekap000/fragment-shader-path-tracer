@@ -72,6 +72,7 @@ out vec4 fragment_color;
 #define EXECUTION_TYPE_INITIALIZE        0
 #define EXECUTION_TYPE_TRACE             1
 #define EXECUTION_TYPE_INCLUDE_RAY_COLOR 2
+#define EXECUTION_TYPE_CONVERT_TO_SRGB   3
 
 uniform unsigned int execution_type;
 // NOTE(stekap): This is here to allow us to properly scale image in real time during generation.
@@ -262,7 +263,7 @@ void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
 
 // NOTE(stekap): This function assumes that the triangle points order matches the normal
 //               via right hand rule.
-void intersect_triangles(inout Ray ray, inout int triangle_index, inout float t) {
+void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 	// D   - ray direction
 	// T   - ray origin minus triangle's first point
 	// E1  - second triangle point minus first
@@ -316,8 +317,6 @@ void intersect_triangles(inout Ray ray, inout int triangle_index, inout float t)
 // Alternatively, we could choose more than one and average the results.
 // Probability is assigned based on the effect that the light can have on the given point (here, we can
 // also take into account the photometric effect rather than radiometric).
-// An example of such probability (not normalized) would be:
-// light_area * light_power * cos(theta1) * cos(theta2) / r^2
 
 // TODO(stekap): Direct light sampling is hardcoded for now. Change this after deciding on how the lights should be
 //               organized in memory.
@@ -331,17 +330,20 @@ void direct_light_sample(inout Ray next_ray) {
 	vec3 light_dir = vec3(278.0, 548.8, -275.0) - light_ray.p;
 	
 	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
+	// light_ray.d = random_unit_vector_in_hemisphere(light_ray.p, time, light_ray.n);
 
 	intersect_triangles(light_ray, triangle_index, t);
 
-	// Direct light sampling uses the area form of the integral in the rendering equation. This is why we don't just have scaling with
-	// one cosine term, but with two plus with the inverse of distance squared.
+	// Direct light sampling uses the area form of the integral in the rendering equation. This is why we don't just
+	// have scaling with one cosine term, but with two plus with the inverse of distance squared.
 	
-	bool visibility = (triangle_index == 0 || triangle_index == 1);
+	float visibility = float(triangle_index == 0 || triangle_index == 1);
 	float geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
 	float light_area = 13650;
-	float radiance_scaling = geometry * light_area;
-	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * float(visibility);
+
+	geometry = max(geometry, 0);
+	
+	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
 }
 
 void main() {
@@ -412,9 +414,6 @@ void main() {
 				next_ray.color = ray.color;
 				next_ray.attenuation = ray.attenuation;
 
-				// MODEL_ASSUMPTION: Li(x, wi) = Li(r(x, wi), -wi), where r is the tracing function.
-				//                   This means that we have not yet taken into account the energy dissipation (expressed by
-				//                   inverse square law) that is the result of ray traveling through the medium.
 				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Li1)
 				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Lo2)
 				//     = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*(material.emittance2 + (BRDF2/prob2)*cos(theta2)*Li2))
@@ -426,16 +425,15 @@ void main() {
 				// attenuation2 = (BRDF1/prob1)*cos(theta1) * (BRDF2/prob2)*cos(theta2)
 				// ...
 				
-				float radiance_scaling = dot(ray.d, ray.n); // <--- cos(theta) radiance scaling under integral
-
-				// Color is the radiance of 3 frequencies.
-				next_ray.color += ray.attenuation * material.emittance * 2;
-
 				float sampling_probability = 1 / (2*PI);
 				vec3 BRDF = material.albedo / PI;
-				
+
+				// NOTE(stekap): This was used before direct light sampling.
+				// Color is the radiance of 3 frequencies.
+				// next_ray.color += ray.attenuation * material.emittance;
+
 				// Collect attenuation.
-				next_ray.attenuation *= (BRDF / sampling_probability) * radiance_scaling;
+				next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
 
 				direct_light_sample(next_ray);
 
@@ -493,8 +491,13 @@ void main() {
 
 		// NOTE(stekap): This allows us to properly show image generation in real time.
 		fragment_color = vec4((color.xyz*ray_count)/processed_ray_count, 1);
+		fragment_color = color_linear_to_sRGB(fragment_color);
 
-		// fragment_color = color_linear_to_sRGB(fragment_color);
+		return;
+	}
+
+	if(execution_type == EXECUTION_TYPE_CONVERT_TO_SRGB) {
+		color_store(color_linear_to_sRGB(color_load()));
 
 		return;
 	}
