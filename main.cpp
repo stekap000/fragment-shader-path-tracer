@@ -421,8 +421,8 @@ struct Scene {
 		std::vector<Material> materials;
 
 		// Light
-		triangles.push_back(Triangle({343.0f, 548.79f, -227.0f}, {213.0f, 548.79f, -227.2f}, {343.0f, 548.79f, -332.0f}, 3));
-		triangles.push_back(Triangle({213.0f, 548.79f, -227.2f}, {213.0f, 548.79f, -332.0f} , {343.0f, 548.79f, -332.0f}, 3));
+		triangles.push_back(Triangle({343.0f, 548.799f, -227.0f}, {213.0f, 548.799f, -227.2f}, {343.0f, 548.799f, -332.0f}, 3));
+		triangles.push_back(Triangle({213.0f, 548.799f, -227.2f}, {213.0f, 548.799f, -332.0f} , {343.0f, 548.799f, -332.0f}, 3));
 
 		// Back wall
 		triangles.push_back(Triangle({0.0f, 0.0f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 548.8f, -559.2f}, 0));
@@ -676,7 +676,7 @@ int main(int arg_count, char** args) {
 	Scene scene   = Scene::cornell_box();
 	Camera camera = Camera::cornell_box();
 	
-	u32 ray_count        = 1024;
+	u32 ray_count        = 512;
 	u32 ray_jump_count   = 128;
 	u32 batch_jump_count = 128;
 	

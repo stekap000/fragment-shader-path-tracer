@@ -200,14 +200,19 @@ float random_in_range(vec3 xyz, float seed, float min, float max) {
 }
 
 vec3 random_unit_vector(vec3 xyz, float seed) {
-	return vec3(random_minus_1_to_1(xyz, seed + 0.1),
-				random_minus_1_to_1(xyz, seed + 0.2),
-				random_minus_1_to_1(xyz, seed + 0.3));
+	return normalize(vec3(random_minus_1_to_1(xyz, seed + 0.1),
+						  random_minus_1_to_1(xyz, seed + 0.2),
+						  random_minus_1_to_1(xyz, seed + 0.3)));
 }
 
 vec3 random_unit_vector_in_hemisphere(vec3 xyz, float seed, vec3 normal) {
 	vec3 unit = random_unit_vector(xyz, seed);
-	return sign(dot(unit, normal)) * unit;
+	float d = dot(unit, normal);
+
+	// NOTE(stekap): We need this check, since sign returns 0 if the argument is 0, which would return 0 vector.
+	if(d == 0) return unit;
+	
+	return sign(d) * unit;
 }
 
 void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
@@ -328,9 +333,10 @@ void direct_light_sample(inout Ray next_ray) {
 	Ray light_ray = next_ray;
 	
 	vec3 light_dir = vec3(278.0, 548.8, -275.0) - light_ray.p;
-	
+
+	// TODO(stekap): This ray is directed towards light i.e. it is a form of importance sampling. Think of this
+	//               when multiple lights are included.
 	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
-	// light_ray.d = random_unit_vector_in_hemisphere(light_ray.p, time, light_ray.n);
 
 	intersect_triangles(light_ray, triangle_index, t);
 
@@ -342,7 +348,7 @@ void direct_light_sample(inout Ray next_ray) {
 	float light_area = 13650;
 
 	geometry = max(geometry, 0);
-	
+
 	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
 }
 
@@ -469,7 +475,7 @@ void main() {
 			}
 			else {
 				// Add because the sky behaves like emitter.
-				ray.color += ray.attenuation * background_color;
+				// ray.color += ray.attenuation * background_color;
 				ray_invalidate(ray);
 
 				break;
