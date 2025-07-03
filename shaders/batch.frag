@@ -207,6 +207,7 @@ vec3 random_unit_vector(vec3 xyz, float seed) {
 
 vec3 random_unit_vector_in_hemisphere(vec3 xyz, float seed, vec3 normal) {
 	vec3 unit = random_unit_vector(xyz, seed);
+
 	float d = dot(unit, normal);
 
 	// NOTE(stekap): We need this check, since sign returns 0 if the argument is 0, which would return 0 vector.
@@ -351,6 +352,14 @@ void direct_light_sample(inout Ray next_ray) {
 
 	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
 }
+
+// TODO(stekap): Isolated bright dots could be the result of rays that bounce just once before hitting the light.
+//               If the random generator is not properly uniform, then it can happen that it favors the cone in the
+//               direction of light, meaning that light would be sampled too much from the given point across different
+//               rays.
+//               If we make the white material act like specular surface by using a small scatter value (like 0.005), then
+//               we can notice that dots appear mostly on diffuse, but not on specular surfaces. Additionally, they appear
+//               a lot more than with all diffuse surfaces.
 
 void main() {
 	float pixel_width = 2.0/width;
