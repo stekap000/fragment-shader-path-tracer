@@ -282,8 +282,9 @@ struct V4 { f32 x, y, z, w; };
 //               (when their attributes and value ranges become more apparent).
 
 enum : u32 {
-	MATERIAL_FLAGS_NONE      = (0 << 0),
-	MATERIAL_FLAGS_BLACKBODY = (1 << 0)
+	MATERIAL_TYPE_BLACKBODY = 0,
+	MATERIAL_TYPE_DIFFUSE   = 1,
+	MATERIAL_TYPE_SPECULAR  = 2,
 };
 
 struct Material {
@@ -291,11 +292,11 @@ struct Material {
 	f32 scatter;
 	V3 emittance;
 	// TODO(stekap): Currently, flags is more for testing. Maybe remove, maybe expand.
-	u32 flags;
+	u32 type;
 
 	Material() {}
-	Material(V3 albedo, V3 emittance, f32 scatter, u32 flags)
-		: albedo(albedo), emittance(emittance), scatter(scatter) {}
+	Material(V3 albedo, V3 emittance, f32 scatter, u32 type)
+		: albedo(albedo), emittance(emittance), scatter(scatter), type(type) {}
 };
 
 struct Sphere {
@@ -405,11 +406,11 @@ struct Scene {
 		};
 
 		std::vector<Material> material = {
-			Material({1.0f, 0.4f, 0.3f}, {0.0, 0.0, 0.0},     0.7f,   MATERIAL_FLAGS_NONE),
-			Material({0.3f, 1.0f, 0.3f}, {0.0, 0.0, 0.0},     0.9f,   MATERIAL_FLAGS_NONE),
-			Material({0.7f, 0.7f, 0.7f}, {0.0, 0.0, 0.0},     0.001f, MATERIAL_FLAGS_NONE),
-			Material({0.8f, 0.8f, 0.8f}, {0.3f, 0.4f, 10.0f}, 0.9f,   MATERIAL_FLAGS_BLACKBODY),
-			Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f},  0.9f,   MATERIAL_FLAGS_BLACKBODY),
+			Material({1.0f, 0.4f, 0.3f}, {0.0, 0.0, 0.0},     0.7f,   MATERIAL_TYPE_DIFFUSE),
+			Material({0.3f, 1.0f, 0.3f}, {0.0, 0.0, 0.0},     0.9f,   MATERIAL_TYPE_DIFFUSE),
+			Material({0.7f, 0.7f, 0.7f}, {0.0, 0.0, 0.0},     0.001f, MATERIAL_TYPE_DIFFUSE),
+			Material({0.8f, 0.8f, 0.8f}, {0.3f, 0.4f, 10.0f}, 0.9f,   MATERIAL_TYPE_BLACKBODY),
+			Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f},  0.9f,   MATERIAL_TYPE_BLACKBODY),
 		};
 		
 		return Scene(spheres, triangles, material);
@@ -486,10 +487,11 @@ struct Scene {
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {84.0f, 330.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, 0));
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, {242.0f, 0.0f, -456.0f}, 0));
 		
-		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // White
-		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Red
-		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_FLAGS_NONE));      // Green
-		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light
+		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_TYPE_DIFFUSE));      // White
+		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_TYPE_DIFFUSE));      // Red
+		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f, MATERIAL_TYPE_DIFFUSE));      // Green
+		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.0f}, 0.95f, MATERIAL_TYPE_BLACKBODY));    // Light
+		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.005f, MATERIAL_TYPE_SPECULAR));    // White
 		// NOTE(stekap): These commented values for light were used when there is no direct light sampling, in order to make
 		//               the scene less dark, since the probability of hitting the light randomly is not large.
 		// materials.push_back(Material({0.6f, 0.6f, 0.2f}, {25.0f, 25.0f, 15.0f}, 0.95f, MATERIAL_FLAGS_BLACKBODY)); // Light

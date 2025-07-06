@@ -61,8 +61,12 @@ struct Material {
 	vec3 albedo;
 	float scatter;
 	vec3 emittance;
-	unsigned int flags;
+	unsigned int type;
 };
+
+#define MATERIAL_TYPE_BLACKBODY 0
+#define MATERIAL_TYPE_DIFFUSE   1
+#define MATERIAL_TYPE_SPECULAR  2
 
 in vec3 position;
 layout (pixel_center_integer) in vec4 gl_FragCoord;
@@ -417,6 +421,11 @@ void main() {
 				Triangle triangle = triangles[triangle_index];
 				Material material = materials[triangle.mat_index];
 
+				if(material.type == MATERIAL_TYPE_BLACKBODY) {
+					ray_invalidate(ray);
+					break;
+				}
+
 				vec3 normal = triangle_normal(triangle);
 				Ray next_ray;
 				next_ray.p = ray.p + t*ray.d;
@@ -428,7 +437,7 @@ void main() {
 				else {
 					next_ray.p += BIAS*normal;
 				}
-				
+
 				next_ray.d = mix(reflect(ray.d, normal),
 								 random_unit_vector_in_hemisphere(next_ray.p, time, normal),
 								 material.scatter);
@@ -447,10 +456,10 @@ void main() {
 				// attenuation1 = (BRDF1/prob1)*cos(theta1)
 				// attenuation2 = (BRDF1/prob1)*cos(theta1) * (BRDF2/prob2)*cos(theta2)
 				// ...
-				
+
 				float sampling_probability = 1 / (2*PI);
 				vec3 BRDF = material.albedo / PI;
-
+				
 				// NOTE(stekap): This was used before direct light sampling.
 				// Color is the radiance of 3 frequencies.
 				// next_ray.color += ray.attenuation * material.emittance;
@@ -461,12 +470,6 @@ void main() {
 				direct_light_sample(next_ray);
 
 				ray = next_ray;
-				
-				// TODO(stekap): If it is emitter, then don't jump further. Will change.
-				if(material.flags == 1) {
-					ray_invalidate(ray);
-					break;
-				}
 			}
 			else if(sphere_index >= 0) {
 				Sphere sphere     = spheres[sphere_index];
@@ -492,7 +495,7 @@ void main() {
 			}
 			else {
 				// Add because the sky behaves like emitter.
-				// ray.color += ray.attenuation * background_color;
+				ray.color += ray.attenuation * background_color;
 				ray_invalidate(ray);
 
 				break;
