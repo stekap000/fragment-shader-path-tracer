@@ -174,18 +174,26 @@ layout (std140, binding = 2) uniform Materials {
 
 int LFSR_Rand_Gen(in int n)
 {
-  n = (n << 13) ^ n; 
-  return (n * (n*n*15731+789221) + 1376312589) & 0x7fffffff;
+	n = (n << 13) ^ n; 
+	return (n * (n*n*15731+789221) + 1376312589) & 0x7fffffff;
 }
 
 float LFSR_Rand_Gen_f(in int n) {
-	int x = LFSR_Rand_Gen(n);
-	return float(sign(x)*x) / 2147483648;
+	// int x = LFSR_Rand_Gen(n);
+	// return float(sign(x)*x) / 2147483648;
+
+	return 1.0 - float((n * (n * n * 15731 + 789221) +	1376312589) & 0x7fffffff) / 1073741824.0;
 }
 
 float hash(vec3 xyz) {
-	return fract(LFSR_Rand_Gen_f(int(dot(xyz, vec3(9.812123, 79.63401, 5.8102)))));
+	int n = int(dot(xyz, vec3(40.0, 6400.0, 0.0)));
+	// int n = int(xyz.x*40.0 + xyz.y*6400.0 + xyz.z*15000.0);
+	return LFSR_Rand_Gen_f(n);
 }
+
+// float hash(vec3 xyz) {
+// 	return fract(LFSR_Rand_Gen_f(int(dot(xyz, vec3(9.812123, 79.63401, 5.8102)))));
+// }
 
 float random_0_to_1(vec3 xyz, float seed) {
 	return hash(seed*xyz);
