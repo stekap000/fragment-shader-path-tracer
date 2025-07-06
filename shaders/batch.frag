@@ -173,16 +173,6 @@ layout (std140, binding = 2) uniform Materials {
 	Material materials[MAX_MATERIAL_COUNT];
 };
 
-// TODO(stekap): Program starts acting very weird and slows down during execution, while green dots appear on the screen (some
-//               random colored dots later). For example, for tracing (1024, 128, 128) it starts appearing at around 50% completion.
-//               This happens when hash function contains this:
-//                   return fract(LFSR_Rand_Gen_f(int(dot(xyz, vec3(73719.123, 79.63401, 5527.8102)))));
-//               If it contains the following, then it works even for (1024, 1024, 256) (isolated green or red dots appear randomly):
-//                   return fract(LFSR_Rand_Gen_f(int(dot(xyz, vec3(9.812123, 79.63401, 5.8102)))));
-//               Since LFSR is based on feeding its output back to itself, meaning that the integer value that it produces is its state,
-//               we might get better results if we restructure the random functions such that that is taken into account (we would need
-//               to keep track of that state in main and pass it every time when some random function is called).
-
 // NOTE(stekap): LFSR_Rand_Gen is from: https://www.geeks3d.com/20100831/shader-library-noise-and-pseudo-random-number-generator-in-glsl/
 //               The rest is custom made based on testing.
 
@@ -375,14 +365,6 @@ void direct_light_sample(inout Ray next_ray) {
 	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
 }
 
-// TODO(stekap): Isolated bright dots could be the result of rays that bounce just once before hitting the light.
-//               If the random generator is not properly uniform, then it can happen that it favors the cone in the
-//               direction of light, meaning that light would be sampled too much from the given point across different
-//               rays.
-//               If we make the white material act like specular surface by using a small scatter value (like 0.005), then
-//               we can notice that dots appear mostly on diffuse, but not on specular surfaces. Additionally, they appear
-//               a lot more than with all diffuse surfaces.
-
 // TODO(stekap): Decide on whether to use something like explicit material type or have properties fully encoded in parameters.
 //               For example, when direct sampling is used we can't do it for specular surfaces since they obey Snell's law
 //               and the direction is therefore fully determined. In that case, if we use explicit type, we would have
@@ -486,9 +468,11 @@ void main() {
 
 				float sampling_probability = 1 / (2*PI);
 				vec3 BRDF = material.albedo / PI;
-				
-				// NOTE(stekap): This was used before direct light sampling.
-				// next_ray.color += ray.attenuation * material.emittance;
+
+				if(material.type == MATERIAL_TYPE_SPECULAR) {
+					sampling_probability = 1.0;
+					BRDF = vec3(1, 1, 1);
+				}
 
 				// Collect attenuation.
 				next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
