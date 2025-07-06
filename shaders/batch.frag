@@ -44,6 +44,7 @@ struct Ray {
 	vec3 n;
 	vec3 color;
 	vec3 attenuation;
+	unsigned int origin_material;
 };
 
 // Adjust when the ray struct changes.
@@ -64,9 +65,10 @@ struct Material {
 	unsigned int type;
 };
 
-#define MATERIAL_TYPE_BLACKBODY 0
-#define MATERIAL_TYPE_DIFFUSE   1
-#define MATERIAL_TYPE_SPECULAR  2
+#define MATERIAL_TYPE_NONE      0
+#define MATERIAL_TYPE_BLACKBODY 1
+#define MATERIAL_TYPE_DIFFUSE   2
+#define MATERIAL_TYPE_SPECULAR  3
 
 in vec3 position;
 layout (pixel_center_integer) in vec4 gl_FragCoord;
@@ -106,11 +108,19 @@ layout (rgba32f, binding = 0) coherent uniform image2D batch_state;
 Ray ray_load() {
 	int X = RAY_SIZE_IN_VEC4 * int(gl_FragCoord.x);
 	int Y =                    int(gl_FragCoord.y);
-	return Ray(imageLoad(batch_state, ivec2(X+0, Y)).xyz,
-			   imageLoad(batch_state, ivec2(X+1, Y)).xyz,
-			   imageLoad(batch_state, ivec2(X+2, Y)).xyz,
-			   imageLoad(batch_state, ivec2(X+3, Y)).xyz,
-			   imageLoad(batch_state, ivec2(X+4, Y)).xyz);
+
+	vec4 v1 = imageLoad(batch_state, ivec2(X+0, Y));
+	vec4 v2 = imageLoad(batch_state, ivec2(X+1, Y));
+	vec4 v3 = imageLoad(batch_state, ivec2(X+2, Y));
+	vec4 v4 = imageLoad(batch_state, ivec2(X+3, Y));
+	vec4 v5 = imageLoad(batch_state, ivec2(X+4, Y));
+	
+	return Ray(v1.xyz,
+			   v2.xyz,
+			   v3.xyz,
+			   v4.xyz,
+			   v5.xyz,
+			   unsigned int(v5.w));
 }
 
 void ray_store(Ray ray) {
@@ -120,7 +130,7 @@ void ray_store(Ray ray) {
 	imageStore(batch_state, ivec2(X+1, Y), vec4(ray.d,           0.0));
 	imageStore(batch_state, ivec2(X+2, Y), vec4(ray.n,           0.0));
 	imageStore(batch_state, ivec2(X+3, Y), vec4(ray.color,       1.0));
-	imageStore(batch_state, ivec2(X+4, Y), vec4(ray.attenuation, 0.0));
+	imageStore(batch_state, ivec2(X+4, Y), vec4(ray.attenuation, ray.origin_material));
 }
 
 layout (rgba32f, binding = 1) coherent uniform image2D final_colors;
@@ -373,6 +383,14 @@ void direct_light_sample(inout Ray next_ray) {
 //               we can notice that dots appear mostly on diffuse, but not on specular surfaces. Additionally, they appear
 //               a lot more than with all diffuse surfaces.
 
+// TODO(stekap): Decide on whether to use something like explicit material type or have properties fully encoded in parameters.
+//               For example, when direct sampling is used we can't do it for specular surfaces since they obey Snell's law
+//               and the direction is therefore fully determined. In that case, if we use explicit type, we would have
+//                   if(material.type == MATERIAL_TYPE_SPECULAR) { direct_light_sample(...); }
+//               However, if we don't have the explicit type and instead rely on some parameter like scatter, we would have
+//                   direct_light_sample(...);
+//               without 'if', and inside the body of that function, we would simply multiply calculated sample with scatter.
+
 void main() {
 	float pixel_width = 2.0/width;
 	float pixel_height = 2.0/height;
@@ -392,7 +410,7 @@ void main() {
 		// This way, we know that the normal will not impact the calculation for the first hit, since there will
 		// be no scaling with cosine term (since dot(direction, normal) = 1 in that case).
 		vec3 ray_direction = normalize(pixel_p_perturbed - focus);
-		Ray ray = {focus, ray_direction, ray_direction, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0)};
+		Ray ray = {focus, ray_direction, ray_direction, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0), 0};
 		
 		ray_store(ray);
 
@@ -422,6 +440,14 @@ void main() {
 				Material material = materials[triangle.mat_index];
 
 				if(material.type == MATERIAL_TYPE_BLACKBODY) {
+					// Add light emittance that is properly attenuated if the previous hit material was specular.
+					// (this allows us to see the light in specular surface)
+					ray.color += float(materials[ray.origin_material].type == MATERIAL_TYPE_SPECULAR) * ray.attenuation * material.emittance;
+					// Add light emittance when it is hit directly.
+					// (this allows us to see the light directly)
+					ray.color += float(ray.attenuation == vec3(1.0, 1.0, 1.0)) * material.emittance;
+
+					// ray.color += ray.attenuation * material.emittance;
 					ray_invalidate(ray);
 					break;
 				}
@@ -445,6 +471,7 @@ void main() {
 				next_ray.n = normal;
 				next_ray.color = ray.color;
 				next_ray.attenuation = ray.attenuation;
+				next_ray.origin_material = triangle.mat_index;
 
 				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Li1)
 				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Lo2)
@@ -461,13 +488,14 @@ void main() {
 				vec3 BRDF = material.albedo / PI;
 				
 				// NOTE(stekap): This was used before direct light sampling.
-				// Color is the radiance of 3 frequencies.
 				// next_ray.color += ray.attenuation * material.emittance;
 
 				// Collect attenuation.
 				next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
 
-				direct_light_sample(next_ray);
+				if(material.type != MATERIAL_TYPE_SPECULAR) {
+					direct_light_sample(next_ray);
+				}
 
 				ray = next_ray;
 			}
