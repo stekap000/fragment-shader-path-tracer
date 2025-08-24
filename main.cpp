@@ -449,45 +449,45 @@ struct Scene {
 
 		// Short block
 		// Top
-		triangles.push_back(Triangle({426.0f, 165.0f, -65.0f}, {474.0f, 165.0f, -225.0f}, {316.0f, 165.0f, -272.0f}, 1));
-		triangles.push_back(Triangle({266.0f, 165.0f, -114.0f}, {426.0f, 165.0f, -65.0f}, {316.0f, 165.0f, -272.0f}, 1));
+		triangles.push_back(Triangle({426.0f, 165.0f, -65.0f}, {474.0f, 165.0f, -225.0f}, {316.0f, 165.0f, -272.0f}, 6));
+		triangles.push_back(Triangle({266.0f, 165.0f, -114.0f}, {426.0f, 165.0f, -65.0f}, {316.0f, 165.0f, -272.0f}, 6));
 
 		// Left
-		triangles.push_back(Triangle({266.0f, 0.0f, -114.0f}, {266.0f, 165.0f, -114.0f}, {316.0f, 165.0f, -272.0f}, 1));
-		triangles.push_back(Triangle({266.0f, 0.0f, -114.0f}, {316.0f, 165.0f, -272.0f}, {316.0f, 0.0f, -272.0f}, 1));
+		triangles.push_back(Triangle({266.0f, 0.0f, -114.0f}, {266.0f, 165.0f, -114.0f}, {316.0f, 165.0f, -272.0f}, 6));
+		triangles.push_back(Triangle({266.0f, 0.0f, -114.0f}, {316.0f, 165.0f, -272.0f}, {316.0f, 0.0f, -272.0f}, 6));
 
 		// Right
-		triangles.push_back(Triangle({474.0f, 0.0f, -225.0f}, {474.0f, 165.0f, -225.0f}, {426.0f, 165.0f, -65.0f}, 1));
-		triangles.push_back(Triangle({474.0f, 0.0f, -225.0f}, {426.0f, 165.0f, -65.0f}, {426.0f, 0.0f, -65.0f}, 1));
+		triangles.push_back(Triangle({474.0f, 0.0f, -225.0f}, {474.0f, 165.0f, -225.0f}, {426.0f, 165.0f, -65.0f}, 6));
+		triangles.push_back(Triangle({474.0f, 0.0f, -225.0f}, {426.0f, 165.0f, -65.0f}, {426.0f, 0.0f, -65.0f}, 6));
 
 		// Front
-		triangles.push_back(Triangle({426.0f, 0.0f, -65.0f}, {426.0f, 165.0f, -65.0f}, {266.0f, 165.0f, -114.0f}, 1));
-		triangles.push_back(Triangle({426.0f, 0.0f, -65.0f}, {266.0f, 165.0f, -114.0f}, {266.0f, 0.0f, -114.0f}, 1));
+		triangles.push_back(Triangle({426.0f, 0.0f, -65.0f}, {426.0f, 165.0f, -65.0f}, {266.0f, 165.0f, -114.0f}, 6));
+		triangles.push_back(Triangle({426.0f, 0.0f, -65.0f}, {266.0f, 165.0f, -114.0f}, {266.0f, 0.0f, -114.0f}, 6));
 
 		// Back
-		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {316.0f, 165.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, 1));
-		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, {474.0f, 0.0f, -225.0f}, 1));
+		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {316.0f, 165.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, 6));
+		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, {474.0f, 0.0f, -225.0f}, 6));
 		
 		// Tall block
 		// Top
-		triangles.push_back(Triangle({133.0f, 330.0f, -247.0f}, {291.0f, 330.0f, -296.0f}, {242.0f, 330.0f, -456.0f}, 1));
-		triangles.push_back(Triangle({133.0f, 330.0f, -247.0f}, {242.0f, 330.0f, -456.0f}, {84.0f, 330.0f, -406.0f}, 1));
+		triangles.push_back(Triangle({133.0f, 330.0f, -247.0f}, {291.0f, 330.0f, -296.0f}, {242.0f, 330.0f, -456.0f}, 6));
+		triangles.push_back(Triangle({133.0f, 330.0f, -247.0f}, {242.0f, 330.0f, -456.0f}, {84.0f, 330.0f, -406.0f}, 6));
 
 		// Left
-		triangles.push_back(Triangle({133.0f, 0.0f, -247.0f}, {133.0f, 330.0f, -247.0f}, {84.0f, 330.0f, -406.0f}, 1));
-		triangles.push_back(Triangle({133.0f, 0.0f, -247.0f}, {84.0f, 330.0f, -406.0f}, {84.0f, 0.0f, -406.0f}, 1));
+		triangles.push_back(Triangle({133.0f, 0.0f, -247.0f}, {133.0f, 330.0f, -247.0f}, {84.0f, 330.0f, -406.0f}, 6));
+		triangles.push_back(Triangle({133.0f, 0.0f, -247.0f}, {84.0f, 330.0f, -406.0f}, {84.0f, 0.0f, -406.0f}, 6));
 
 		// Right
-		triangles.push_back(Triangle({242.0f, 0.0f, -456.0f}, {242.0f, 330.0f, -456.0f}, {291.0f, 330.0f, -296.0f}, 1));
-		triangles.push_back(Triangle({242.0f, 0.0f, -456.0f}, {291.0f, 330.0f, -296.0f}, {291.0f, 0.0f, -296.0f}, 1));
+		triangles.push_back(Triangle({242.0f, 0.0f, -456.0f}, {242.0f, 330.0f, -456.0f}, {291.0f, 330.0f, -296.0f}, 6));
+		triangles.push_back(Triangle({242.0f, 0.0f, -456.0f}, {291.0f, 330.0f, -296.0f}, {291.0f, 0.0f, -296.0f}, 6));
 
 		// Front
-		triangles.push_back(Triangle({291.0f, 0.0f, -296.0f}, {291.0f, 330.0f, -296.0f}, {133.0f, 330.0f, -247.0f}, 1));
-		triangles.push_back(Triangle({291.0f, 0.0f, -296.0f}, {133.0f, 330.0f, -247.0f}, {133.0f, 0.0f, -247.0f}, 1));
+		triangles.push_back(Triangle({291.0f, 0.0f, -296.0f}, {291.0f, 330.0f, -296.0f}, {133.0f, 330.0f, -247.0f}, 6));
+		triangles.push_back(Triangle({291.0f, 0.0f, -296.0f}, {133.0f, 330.0f, -247.0f}, {133.0f, 0.0f, -247.0f}, 6));
 		
 		// Back
-		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {84.0f, 330.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, 1));
-		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, {242.0f, 0.0f, -456.0f}, 1));
+		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {84.0f, 330.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, 6));
+		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, {242.0f, 0.0f, -456.0f}, 6));
 
 		materials.push_back(Material({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f,   MATERIAL_TYPE_NONE));      // Default material
 		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));   // White
@@ -495,6 +495,7 @@ struct Scene {
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));   // Green
 		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.0f}, 0.95f,  MATERIAL_TYPE_BLACKBODY)); // Light
 		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.005f, MATERIAL_TYPE_SPECULAR));  // Mirror
+		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 1.4f,   MATERIAL_TYPE_DIELECTRIC));  // Glass
 
 		return Scene(spheres, triangles, materials);
 	}

@@ -442,19 +442,58 @@ void main() {
 				Ray next_ray;
 				next_ray.p = ray.p + t*ray.d;
 
-				// TODO(stekap): Adhoc. Revisit when dielectric handling is introduced.
-				if(dot(ray.d, normal) < 0) {
-					next_ray.p -= BIAS*normal;
+				if(material.type == MATERIAL_TYPE_DIELECTRIC) {
+					float refraction_ratio = ray.ior / material.scatter_or_ior;
+
+					if(ray.ior == material.scatter_or_ior) {
+						refraction_ratio = ray.ior;
+					}
+
+					vec3 R_sin_theta = ray.d + dot(-ray.d, normal)*normal;
+					vec3 normal_direction = refraction_ratio*R_sin_theta;
+					vec3 tangential_direction = -normal*sqrt(1 - normal_direction*normal_direction);
+					next_ray.d = normalize(normal_direction + tangential_direction);
+
+					if(dot(ray.d, normal) < 0) {
+						next_ray.p -= BIAS*normal;
+					}
+					else {
+						next_ray.p += BIAS*normal;
+					}
+
+					if(ray.ior == material.scatter_or_ior) {
+						float sin_theta = length(normalize(ray.d) + normal*dot(normalize(ray.d), normal));
+						if(sin_theta * ray.ior > 1.0) {
+							next_ray.ior = material.scatter_or_ior;
+							next_ray.n = -normal;
+						}
+						else {
+							next_ray.ior = 1.0;
+							next_ray.n = normal;
+						}
+					}
+					else {
+						next_ray.ior = material.scatter_or_ior;
+						next_ray.n = -normal;
+					}
 				}
 				else {
-					next_ray.p += BIAS*normal;
+					// TODO(stekap): Adhoc. Revisit when dielectric handling is introduced.
+					if(dot(ray.d, normal) < 0) {
+						next_ray.p += BIAS*normal;
+					}
+					else {
+						next_ray.p -= BIAS*normal;
+					}
+
+					next_ray.d = mix(reflect(ray.d, normal),
+									 random_unit_vector_in_hemisphere(next_ray.p, time, normal),
+									 material.scatter_or_ior);
+					next_ray.n = normal;
+					next_ray.ior = ray.ior;
 				}
 
-				next_ray.d = mix(reflect(ray.d, normal),
-								 random_unit_vector_in_hemisphere(next_ray.p, time, normal),
-								 material.scatter_or_ior);
 
-				next_ray.n = normal;
 				next_ray.color = ray.color;
 				next_ray.attenuation = ray.attenuation;
 				next_ray.origin_material = triangle.mat_index;
@@ -477,11 +516,15 @@ void main() {
 					sampling_probability = 1.0;
 					BRDF = vec3(1, 1, 1);
 				}
+				else if(material.type == MATERIAL_TYPE_DIELECTRIC) {
+					sampling_probability = 0.9;
+					BRDF = vec3(1, 1, 1);
+				}
 
 				// Collect attenuation.
 				next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
 
-				if(material.type != MATERIAL_TYPE_SPECULAR) {
+				if(material.type != MATERIAL_TYPE_SPECULAR && material.type != MATERIAL_TYPE_DIELECTRIC) {
 					direct_light_sample(next_ray);
 				}
 
