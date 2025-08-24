@@ -282,22 +282,23 @@ struct V4 { f32 x, y, z, w; };
 //               (when their attributes and value ranges become more apparent).
 
 enum : u32 {
-	MATERIAL_TYPE_NONE      = 0,
-	MATERIAL_TYPE_BLACKBODY = 1,
-	MATERIAL_TYPE_DIFFUSE   = 2,
-	MATERIAL_TYPE_SPECULAR  = 3,
+	MATERIAL_TYPE_NONE       = 0,
+	MATERIAL_TYPE_BLACKBODY  = 1,
+	MATERIAL_TYPE_DIFFUSE    = 2,
+	MATERIAL_TYPE_SPECULAR   = 3,
+	MATERIAL_TYPE_DIELECTRIC = 4,
 };
 
 struct Material {
 	V3 albedo;
-	f32 scatter;
+	f32 scatter_or_ior;
 	V3 emittance;
 	// TODO(stekap): Currently, flags is more for testing. Maybe remove, maybe expand.
 	u32 type;
 
 	Material() {}
-	Material(V3 albedo, V3 emittance, f32 scatter, u32 type)
-		: albedo(albedo), emittance(emittance), scatter(scatter), type(type) {}
+	Material(V3 albedo, V3 emittance, f32 scatter_or_ior, u32 type)
+		: albedo(albedo), emittance(emittance), scatter_or_ior(scatter_or_ior), type(type) {}
 };
 
 struct Sphere {
@@ -489,7 +490,7 @@ struct Scene {
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, {242.0f, 0.0f, -456.0f}, 1));
 
 		materials.push_back(Material({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f,   MATERIAL_TYPE_NONE));      // Default material
-		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));  // White
+		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));   // White
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));   // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));   // Green
 		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.0f}, 0.95f,  MATERIAL_TYPE_BLACKBODY)); // Light
@@ -673,16 +674,16 @@ int main(int arg_count, char** args) {
 	}
 
 	OpenGL::initialize_tracer_rectangle();
-	
+
 	Scene scene   = Scene::cornell_box();
 	Camera camera = Camera::cornell_box();
 	
 	u32 ray_count        = 512;
 	u32 ray_jump_count   = 128;
 	u32 batch_jump_count = 128;
-	
+
 	u32 program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
-	
+
 	Tracer tracer(window, scene, camera, program);
 
 	// This generates a single image.

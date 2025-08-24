@@ -43,6 +43,7 @@ struct Ray {
 	vec3 d;
 	vec3 n;
 	vec3 color;
+	float ior;
 	vec3 attenuation;
 	unsigned int origin_material;
 };
@@ -60,15 +61,16 @@ void ray_invalidate(inout Ray ray) {
 
 struct Material {
 	vec3 albedo;
-	float scatter;
+	float scatter_or_ior;
 	vec3 emittance;
 	unsigned int type;
 };
 
-#define MATERIAL_TYPE_NONE      0
-#define MATERIAL_TYPE_BLACKBODY 1
-#define MATERIAL_TYPE_DIFFUSE   2
-#define MATERIAL_TYPE_SPECULAR  3
+#define MATERIAL_TYPE_NONE       0
+#define MATERIAL_TYPE_BLACKBODY  1
+#define MATERIAL_TYPE_DIFFUSE    2
+#define MATERIAL_TYPE_SPECULAR   3
+#define MATERIAL_TYPE_DIELECTRIC 4
 
 in vec3 position;
 layout (pixel_center_integer) in vec4 gl_FragCoord;
@@ -109,18 +111,19 @@ Ray ray_load() {
 	int X = RAY_SIZE_IN_VEC4 * int(gl_FragCoord.x);
 	int Y =                    int(gl_FragCoord.y);
 
-	vec4 v1 = imageLoad(batch_state, ivec2(X+0, Y));
-	vec4 v2 = imageLoad(batch_state, ivec2(X+1, Y));
-	vec4 v3 = imageLoad(batch_state, ivec2(X+2, Y));
-	vec4 v4 = imageLoad(batch_state, ivec2(X+3, Y));
-	vec4 v5 = imageLoad(batch_state, ivec2(X+4, Y));
+	vec4 v0 = imageLoad(batch_state, ivec2(X+0, Y));
+	vec4 v1 = imageLoad(batch_state, ivec2(X+1, Y));
+	vec4 v2 = imageLoad(batch_state, ivec2(X+2, Y));
+	vec4 v3 = imageLoad(batch_state, ivec2(X+3, Y));
+	vec4 v4 = imageLoad(batch_state, ivec2(X+4, Y));
 	
-	return Ray(v1.xyz,
+	return Ray(v0.xyz,
+			   v1.xyz,
 			   v2.xyz,
 			   v3.xyz,
+			   float(v3.w),
 			   v4.xyz,
-			   v5.xyz,
-			   unsigned int(v5.w));
+			   unsigned int(v4.w));
 }
 
 void ray_store(Ray ray) {
@@ -129,7 +132,7 @@ void ray_store(Ray ray) {
 	imageStore(batch_state, ivec2(X+0, Y), vec4(ray.p,           0.0));
 	imageStore(batch_state, ivec2(X+1, Y), vec4(ray.d,           0.0));
 	imageStore(batch_state, ivec2(X+2, Y), vec4(ray.n,           0.0));
-	imageStore(batch_state, ivec2(X+3, Y), vec4(ray.color,       1.0));
+	imageStore(batch_state, ivec2(X+3, Y), vec4(ray.color,       ray.ior));
 	imageStore(batch_state, ivec2(X+4, Y), vec4(ray.attenuation, ray.origin_material));
 }
 
@@ -386,13 +389,14 @@ void main() {
 		//               that is different for different samples of the same pixel.
 		vec3 time_vec = vec3(time + 0.1, time + 0.2, time + 0.3);
 
-		vec3 pixel_p_perturbed = pixel_p + 0.5*random_in_range(time_vec, time + 0.1, -pixel_width, pixel_width)*camera.x + 0.5*random_in_range(time_vec, time + 0.2, -pixel_height, pixel_height)*camera.y;
+		float perturbation_factor = 0.35;
+		vec3 pixel_p_perturbed = pixel_p + perturbation_factor*random_in_range(time_vec, time + 0.1, -pixel_width, pixel_width)*camera.x + perturbation_factor*random_in_range(time_vec, time + 0.2, -pixel_height, pixel_height)*camera.y;
 
 		// Set the normal to be the same as direction for the initial ray i.e. ray comming from the camera focus.
 		// This way, we know that the normal will not impact the calculation for the first hit, since there will
 		// be no scaling with cosine term (since dot(direction, normal) = 1 in that case).
 		vec3 ray_direction = normalize(pixel_p_perturbed - focus);
-		Ray ray = {focus, ray_direction, ray_direction, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0), 0};
+		Ray ray = {focus, ray_direction, ray_direction, vec3(0.0, 0.0, 0.0), 1.0, vec3(1.0, 1.0, 1.0), 0};
 		
 		ray_store(ray);
 
@@ -448,7 +452,7 @@ void main() {
 
 				next_ray.d = mix(reflect(ray.d, normal),
 								 random_unit_vector_in_hemisphere(next_ray.p, time, normal),
-								 material.scatter);
+								 material.scatter_or_ior);
 
 				next_ray.n = normal;
 				next_ray.color = ray.color;
@@ -491,7 +495,7 @@ void main() {
 				vec3 normal = normalize(ray.p - sphere.p);
 				ray.d = reflect(ray.d, normal);
 
-				ray.d = mix(ray.d, random_unit_vector_in_hemisphere(ray.p, time, normal), material.scatter);
+				ray.d = mix(ray.d, random_unit_vector_in_hemisphere(ray.p, time, normal), material.scatter_or_ior);
 				
 				if(dot(ray.d, normal) < 0) {
 					ray.p -= BIAS*normal;
