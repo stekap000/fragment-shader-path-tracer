@@ -265,7 +265,15 @@ namespace OpenGL {
 	}
 };
 
-struct V3 { f32 x, y, z; };
+struct V3 {
+	f32 x, y, z;
+	V3& operator += (const V3& v) {
+		x += v.x;
+		y += v.y;
+		z += v.z;
+		return *this;
+	}
+};
 struct V4 { f32 x, y, z, w; };
 
 // TODO(stekap): Maybe metaprogram part of the shader source, so that we can define things only once on the host
@@ -325,6 +333,12 @@ struct Triangle {
 	Triangle() {}
 	Triangle(V3 p1, V3 p2, V3 p3, u32 mat_index)
 		: p1(p1), p2(p2), p3(p3), mat_index(mat_index) {}
+
+	inline void translate(V3& translation_vector) {
+		p1 += translation_vector;
+		p2 += translation_vector;
+		p3 += translation_vector;
+	}
 };
 
 struct Camera {
@@ -427,8 +441,8 @@ struct Scene {
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // Green
 		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.0f}, 0.95f,  MATERIAL_TYPE_BLACKBODY));  // Light
-		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.005f, MATERIAL_TYPE_SPECULAR));   // Mirror
-		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 1.4f,   MATERIAL_TYPE_DIELECTRIC)); // Glass
+		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.005f, MATERIAL_TYPE_SPECULAR));   // Mirror
+		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 1.4f,   MATERIAL_TYPE_DIELECTRIC)); // Glass
 
 		place_light(triangles, 4);
 		place_back_wall(triangles, 1);
@@ -442,43 +456,45 @@ struct Scene {
 		return Scene(spheres, triangles, materials);
 	}
 
-	static void place_light(std::vector<Triangle>& triangles, int material_index) {
+	private : static void place_light(std::vector<Triangle>& triangles, int material_index) {
 		// Light
 		triangles.push_back(Triangle({343.0f, 548.799f, -227.0f}, {213.0f, 548.799f, -227.2f}, {343.0f, 548.799f, -332.0f}, material_index));
 		triangles.push_back(Triangle({213.0f, 548.799f, -227.2f}, {213.0f, 548.799f, -332.0f} , {343.0f, 548.799f, -332.0f}, material_index));
 	}
 
-	static void place_back_wall(std::vector<Triangle>& triangles, int material_index) {
+	private : static void place_back_wall(std::vector<Triangle>& triangles, int material_index) {
 		// Back wall
 		triangles.push_back(Triangle({0.0f, 0.0f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 548.8f, -559.2f}, material_index));
 		triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, -559.2f}, {0.0f, 0.0f, -559.2f}, material_index));
 	}
 
-	static void place_left_wall(std::vector<Triangle>& triangles, int material_index) {
+	private : static void place_left_wall(std::vector<Triangle>& triangles, int material_index) {
 		// Left wall
 		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -559.2f}, {0.0f, 548.8f, -559.2f}, material_index));
 		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, {0.0f, 0.0f, 0.0f}, material_index));
 	}
 
-	static void place_right_wall(std::vector<Triangle>& triangles, int material_index) {
+	private : static void place_right_wall(std::vector<Triangle>& triangles, int material_index) {
 		// Right wall
 		triangles.push_back(Triangle({556.0f, 0.0f, 0.0f}, {556.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, material_index));
 		triangles.push_back(Triangle({556.0f, 548.8f, -559.2f}, {556.0f, 0.0f, -559.2f}, {556.0f, 0.0f, 0.0f}, material_index));
 	}
 
-	static void place_floor(std::vector<Triangle>& triangles, int material_index) {
+	private : static void place_floor(std::vector<Triangle>& triangles, int material_index) {
 		// Floor
 		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {556.0f, 0.0f, 0.0f}, {556.0f, 0.0f, -559.2f}, material_index));
 		triangles.push_back(Triangle({556.0f, 0.0f, -559.2f}, {0.0f, 0.0f, -559.2f}, {0.0f, 0.0f, 0.0f}, material_index));
 	}
 
-	static void place_ceiling(std::vector<Triangle>& triangles, int material_index) {
+	private : static void place_ceiling(std::vector<Triangle>& triangles, int material_index) {
 		// Ceiling
 		triangles.push_back(Triangle({556.0f, 548.8f, 0.0f}, {0.0f, 548.8f, 0.0f}, {556.0f, 548.8f, -559.2f}, material_index));
 		triangles.push_back(Triangle({0.0f, 548.8f, -559.2f}, {556.0f, 548.8f, -559.2f}, {0.0f, 548.8f, 0.0f}, material_index));
 	}
 
-	static void place_short_block(std::vector<Triangle>& triangles, int material_index) {
+	private : static void place_short_block(std::vector<Triangle>& triangles, int material_index, V3 translation_vector = {0, 0, 0}) {
+		int old_triangle_count = (int)triangles.size();
+
 		// Short block
 		// Top
 		triangles.push_back(Triangle({426.0f, 165.0f, -65.0f}, {474.0f, 165.0f, -225.0f}, {316.0f, 165.0f, -272.0f}, material_index));
@@ -499,9 +515,15 @@ struct Scene {
 		// Back
 		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {316.0f, 165.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, material_index));
 		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, {474.0f, 0.0f, -225.0f}, material_index));
+
+		for(int i = old_triangle_count; i < old_triangle_count + 10; ++i) {
+			triangles[i].translate(translation_vector);
+		}
 	}
 
-	static void place_tall_block(std::vector<Triangle>& triangles, int material_index) {
+	private : static void place_tall_block(std::vector<Triangle>& triangles, int material_index, V3 translation_vector = {0, 0, 0}) {
+		int old_triangle_count = (int)triangles.size();
+
 		// Tall block
 		// Top
 		triangles.push_back(Triangle({133.0f, 330.0f, -247.0f}, {291.0f, 330.0f, -296.0f}, {242.0f, 330.0f, -456.0f}, material_index));
@@ -522,6 +544,10 @@ struct Scene {
 		// Back
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {84.0f, 330.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, material_index));
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, {242.0f, 0.0f, -456.0f}, material_index));
+
+		for(int i = old_triangle_count; i < old_triangle_count + 10; ++i) {
+			triangles[i].translate(translation_vector);
+		}
 	}
 };
 
