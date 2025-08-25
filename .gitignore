@@ -5,3 +5,5 @@
 *.obj
 *.pdb
 *.rdi
+*.cache*
+*compile_commands*
