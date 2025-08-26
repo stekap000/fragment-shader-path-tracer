@@ -449,10 +449,10 @@ void main() {
 						refraction_ratio = ray.ior;
 					}
 
-					vec3 R_sin_theta = ray.d + dot(-ray.d, normal)*normal;
-					vec3 normal_direction = refraction_ratio*R_sin_theta;
-					vec3 tangential_direction = -normal*sqrt(1 - normal_direction*normal_direction);
-					next_ray.d = normalize(normal_direction + tangential_direction);
+					vec3 perpendicular_direction = refraction_ratio*(ray.d - dot(ray.d, normal)*normal);
+					float perpendicular_direction_length = length(perpendicular_direction);
+					vec3 parallel_direction = -normal*sqrt(1 - pow(perpendicular_direction_length, 2));
+					next_ray.d = normalize(perpendicular_direction + parallel_direction);
 
 					if(dot(ray.d, normal) < 0) {
 						next_ray.p -= BIAS*normal;
@@ -462,10 +462,17 @@ void main() {
 					}
 
 					if(ray.ior == material.scatter_or_ior) {
-						float sin_theta = length(normalize(ray.d) + normal*dot(normalize(ray.d), normal));
-						if(sin_theta * ray.ior > 1.0) {
+						// bool total_reflection = abs(dot(next_ray.d, -normal)) > BIAS;
+						// float sin_theta = length(normalize(ray.d) + normal*dot(normalize(ray.d), normal));
+						// float sin_theta = length(ray.d - normal*dot(ray.d, normal));
+						// If total internal reflection
+						// if(total_reflection) {
+						// if(sin_theta * ray.ior > 1.0 - BIAS) {
+						if(length(parallel_direction) < BIAS) {
 							next_ray.ior = material.scatter_or_ior;
 							next_ray.n = -normal;
+							next_ray.d = normalize(perpendicular_direction) - BIAS*normal;
+							next_ray.p -= 2*BIAS*normal;
 						}
 						else {
 							next_ray.ior = 1.0;
@@ -486,13 +493,12 @@ void main() {
 						next_ray.p -= BIAS*normal;
 					}
 
-					next_ray.d = mix(reflect(ray.d, normal),
-									 random_unit_vector_in_hemisphere(next_ray.p, time, normal),
-									 material.scatter_or_ior);
+					next_ray.d = normalize(mix(reflect(ray.d, normal),
+											   random_unit_vector_in_hemisphere(next_ray.p, time, normal),
+											   material.scatter_or_ior));
 					next_ray.n = normal;
 					next_ray.ior = ray.ior;
 				}
-
 
 				next_ray.color = ray.color;
 				next_ray.attenuation = ray.attenuation;
@@ -514,15 +520,20 @@ void main() {
 
 				if(material.type == MATERIAL_TYPE_SPECULAR) {
 					sampling_probability = 1.0;
-					BRDF = vec3(1, 1, 1);
+					BRDF = material.albedo;
 				}
 				else if(material.type == MATERIAL_TYPE_DIELECTRIC) {
-					sampling_probability = 0.9;
-					BRDF = vec3(1, 1, 1);
+					sampling_probability = 1.0;
+					BRDF = material.albedo;
 				}
 
-				// Collect attenuation.
-				next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
+				if(material.type != MATERIAL_TYPE_DIELECTRIC) {
+					// Collect attenuation.
+					next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
+				}
+				else {
+					next_ray.attenuation *= (BRDF / sampling_probability);
+				}
 
 				if(material.type != MATERIAL_TYPE_SPECULAR && material.type != MATERIAL_TYPE_DIELECTRIC) {
 					direct_light_sample(next_ray);
@@ -569,8 +580,6 @@ void main() {
 	if(execution_type == EXECUTION_TYPE_INCLUDE_RAY_COLOR) {
 		Ray ray = ray_load();
 
-		// NOTE(stekap): We could maybe sample some light at the end of ray tracing for the current ray
-		//               here, and add ray.attenuation*(sampled light) to the ray.color below.
 		vec4 color = color_load() + vec4(ray.color/ray_count, 1.0);
 		color_store(color);
 
