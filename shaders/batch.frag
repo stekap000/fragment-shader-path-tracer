@@ -333,6 +333,58 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 	}
 }
 
+void update_next_ray_diffuse_and_specular(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
+	if(dot(ray.d, normal) < 0) {
+		next_ray.p += BIAS*normal;
+	}
+	else {
+		next_ray.p -= BIAS*normal;
+	}
+
+	next_ray.d = normalize(mix(reflect(ray.d, normal),
+							   random_unit_vector_in_hemisphere(next_ray.p, time, normal),
+							   material.scatter_or_ior));
+	next_ray.n = normal;
+	next_ray.ior = ray.ior;
+}
+
+void update_next_ray_dielectric(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
+	float refraction_ratio = ray.ior / material.scatter_or_ior;
+
+	if(ray.ior == material.scatter_or_ior) {
+		refraction_ratio = ray.ior;
+	}
+
+	vec3 perpendicular_direction = refraction_ratio*(ray.d - dot(ray.d, normal)*normal);
+	float perpendicular_direction_length = length(perpendicular_direction);
+	vec3 parallel_direction = -normal*sqrt(1 - pow(perpendicular_direction_length, 2));
+	next_ray.d = normalize(perpendicular_direction + parallel_direction);
+
+	if(dot(ray.d, normal) < 0) {
+		next_ray.p -= BIAS*normal;
+	}
+	else {
+		next_ray.p += BIAS*normal;
+	}
+
+	if(ray.ior == material.scatter_or_ior) {
+		if(length(parallel_direction) < BIAS) {
+			next_ray.ior = material.scatter_or_ior;
+			next_ray.n = -normal;
+			next_ray.d = normalize(perpendicular_direction) - BIAS*normal;
+			next_ray.p -= 2*BIAS*normal;
+		}
+		else {
+			next_ray.ior = 1.0;
+			next_ray.n = normal;
+		}
+	}
+	else {
+		next_ray.ior = material.scatter_or_ior;
+		next_ray.n = -normal;
+	}
+}
+
 // TODO(stekap):
 // For multiple lights, we choose to directly sample one, based on the probability assigned to that light.
 // Alternatively, we could choose more than one and average the results.
@@ -347,8 +399,8 @@ void direct_light_sample(inout Ray next_ray) {
 	int triangle_index = -1;
 	
 	Ray light_ray = next_ray;
-	
-	vec3 light_dir = vec3(278.0, 548.8, -275.0) - light_ray.p;
+
+	vec3 light_dir = vec3(278.0, 548.8, -275.0) - next_ray.p;
 
 	// TODO(stekap): This ray is directed towards light i.e. it is a form of importance sampling. Think of this
 	//               when multiple lights are included.
@@ -358,7 +410,7 @@ void direct_light_sample(inout Ray next_ray) {
 
 	// Direct light sampling uses the area form of the integral in the rendering equation. This is why we don't just
 	// have scaling with one cosine term, but with two plus with the inverse of distance squared.
-	
+
 	float visibility = float(triangle_index == 0 || triangle_index == 1);
 	float geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
 	float light_area = 13650;
@@ -366,7 +418,64 @@ void direct_light_sample(inout Ray next_ray) {
 	geometry = max(geometry, 0);
 
 	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
+
+	// TESTING LIGHT RAY TRAVERSAL THROUGH DIELECTRIC
+
+	// float visibility = 0.0;
+	// float geometry = 0.0;
+	// float light_area = 13650.0;
+
+	// Ray next_ray_temp;
+
+	// for(unsigned int i = 0; i < 8; ++i) {
+	// 	intersect_triangles(light_ray, triangle_index, t);
+
+	// 	if(t < 0) {
+	// 		break;
+	// 	}
+
+	// 	unsigned int type = materials[triangles[triangle_index].mat_index].type;
+
+	// 	if(type == MATERIAL_TYPE_BLACKBODY) {
+	// 		visibility = 1.0;
+	// 		geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
+	// 		geometry = max(geometry, 0);
+	// 		break;
+	// 	}
+
+	// 	if(type != MATERIAL_TYPE_DIELECTRIC) {
+	// 		break;
+	// 	}
+
+	// 	Triangle triangle = triangles[triangle_index];
+	// 	Material material = materials[triangle.mat_index];
+	// 	vec3 normal = triangle_normal(triangle);
+
+	// 	next_ray_temp.p = light_ray.p + t*light_ray.d;
+
+	// 	update_next_ray_dielectric(light_ray, next_ray_temp, material, normal);
+
+	// 	next_ray_temp.color = light_ray.color;
+	// 	next_ray_temp.attenuation = light_ray.attenuation;
+	// 	next_ray_temp.origin_material = triangle.mat_index;
+
+	// 	light_dir = vec3(278.0, 548.8, -275.0) - next_ray_temp.p;
+	// 	//light_ray.d = light_dir;
+	// 	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
+
+	// 	intersect_triangles(next_ray_temp, triangle_index, t);
+
+	// 	//light_ray = next_ray;
+
+	// 	// if(vec3(278.0, 548.8, -275.0) - light_ray.p)
+	// 	// vec3 light_dir = vec3(278.0, 548.8, -275.0) - light_ray.p;
+	// 	// light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
+	// }
+
+	// next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
 }
+
+
 
 // TODO(stekap): Decide on whether to use something like explicit material type or have properties fully encoded in parameters.
 //               For example, when direct sampling is used we can't do it for specular surfaces since they obey Snell's law
@@ -443,61 +552,10 @@ void main() {
 				next_ray.p = ray.p + t*ray.d;
 
 				if(material.type == MATERIAL_TYPE_DIELECTRIC) {
-					float refraction_ratio = ray.ior / material.scatter_or_ior;
-
-					if(ray.ior == material.scatter_or_ior) {
-						refraction_ratio = ray.ior;
-					}
-
-					vec3 perpendicular_direction = refraction_ratio*(ray.d - dot(ray.d, normal)*normal);
-					float perpendicular_direction_length = length(perpendicular_direction);
-					vec3 parallel_direction = -normal*sqrt(1 - pow(perpendicular_direction_length, 2));
-					next_ray.d = normalize(perpendicular_direction + parallel_direction);
-
-					if(dot(ray.d, normal) < 0) {
-						next_ray.p -= BIAS*normal;
-					}
-					else {
-						next_ray.p += BIAS*normal;
-					}
-
-					if(ray.ior == material.scatter_or_ior) {
-						// bool total_reflection = abs(dot(next_ray.d, -normal)) > BIAS;
-						// float sin_theta = length(normalize(ray.d) + normal*dot(normalize(ray.d), normal));
-						// float sin_theta = length(ray.d - normal*dot(ray.d, normal));
-						// If total internal reflection
-						// if(total_reflection) {
-						// if(sin_theta * ray.ior > 1.0 - BIAS) {
-						if(length(parallel_direction) < BIAS) {
-							next_ray.ior = material.scatter_or_ior;
-							next_ray.n = -normal;
-							next_ray.d = normalize(perpendicular_direction) - BIAS*normal;
-							next_ray.p -= 2*BIAS*normal;
-						}
-						else {
-							next_ray.ior = 1.0;
-							next_ray.n = normal;
-						}
-					}
-					else {
-						next_ray.ior = material.scatter_or_ior;
-						next_ray.n = -normal;
-					}
+					update_next_ray_dielectric(ray, next_ray, material, normal);
 				}
 				else {
-					// TODO(stekap): Adhoc. Revisit when dielectric handling is introduced.
-					if(dot(ray.d, normal) < 0) {
-						next_ray.p += BIAS*normal;
-					}
-					else {
-						next_ray.p -= BIAS*normal;
-					}
-
-					next_ray.d = normalize(mix(reflect(ray.d, normal),
-											   random_unit_vector_in_hemisphere(next_ray.p, time, normal),
-											   material.scatter_or_ior));
-					next_ray.n = normal;
-					next_ray.ior = ray.ior;
+					update_next_ray_diffuse_and_specular(ray, next_ray, material, normal);
 				}
 
 				next_ray.color = ray.color;
@@ -535,7 +593,7 @@ void main() {
 					next_ray.attenuation *= (BRDF / sampling_probability);
 				}
 
-				if(material.type != MATERIAL_TYPE_SPECULAR && material.type != MATERIAL_TYPE_DIELECTRIC) {
+				if(material.type == MATERIAL_TYPE_DIFFUSE) {
 					direct_light_sample(next_ray);
 				}
 
