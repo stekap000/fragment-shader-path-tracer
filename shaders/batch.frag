@@ -333,7 +333,24 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 	}
 }
 
-void update_next_ray_diffuse_and_specular(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
+// Iterative form for the rendering equation:
+// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Li1)
+// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Lo2)
+//     = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*(material.emittance2 + (BRDF2/prob2)*cos(theta2)*Li2))
+//
+// <=> Lo1 = (1/n)SUM(material.emittance1*attenuation0 + attenuation1*(material.emittance2 + ...))
+
+// attenuation0 = 1
+// attenuation1 = (BRDF1/prob1)*cos(theta1)
+// attenuation2 = (BRDF1/prob1)*cos(theta1) * (BRDF2/prob2)*cos(theta2)
+// ...
+
+Ray update_next_ray_diffuse_and_specular_triangle(in Ray ray, in Triangle triangle, in Material material, in float t) {
+	Ray next_ray;
+	next_ray.p = ray.p + t*ray.d;
+
+	vec3 normal = triangle_normal(triangle);
+
 	if(dot(ray.d, normal) < 0) {
 		next_ray.p += BIAS*normal;
 	}
@@ -346,9 +363,20 @@ void update_next_ray_diffuse_and_specular(in Ray ray, inout Ray next_ray, in Mat
 							   material.scatter_or_ior));
 	next_ray.n = normal;
 	next_ray.ior = ray.ior;
+
+	next_ray.color = ray.color;
+	next_ray.attenuation = ray.attenuation;
+	next_ray.origin_material = triangle.mat_index;
+
+	return next_ray;
 }
 
-void update_next_ray_dielectric(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
+Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in Material material, in float t) {
+	Ray next_ray;
+	next_ray.p = ray.p + t*ray.d;
+
+	vec3 normal = triangle_normal(triangle);
+
 	float refraction_ratio = ray.ior / material.scatter_or_ior;
 
 	if(ray.ior == material.scatter_or_ior) {
@@ -383,6 +411,12 @@ void update_next_ray_dielectric(in Ray ray, inout Ray next_ray, in Material mate
 		next_ray.ior = material.scatter_or_ior;
 		next_ray.n = -normal;
 	}
+
+	next_ray.color = ray.color;
+	next_ray.attenuation = ray.attenuation;
+	next_ray.origin_material = triangle.mat_index;
+
+	return next_ray;
 }
 
 // TODO(stekap):
@@ -547,79 +581,65 @@ void main() {
 					break;
 				}
 
-				vec3 normal = triangle_normal(triangle);
 				Ray next_ray;
-				next_ray.p = ray.p + t*ray.d;
+				float sampling_probability;
+				vec3 BRDF;
 
-				if(material.type == MATERIAL_TYPE_DIELECTRIC) {
-					update_next_ray_dielectric(ray, next_ray, material, normal);
-				}
-				else {
-					update_next_ray_diffuse_and_specular(ray, next_ray, material, normal);
-				}
+				switch(material.type) {
+					case MATERIAL_TYPE_DIFFUSE: {
+						next_ray = next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, material, t);
 
-				next_ray.color = ray.color;
-				next_ray.attenuation = ray.attenuation;
-				next_ray.origin_material = triangle.mat_index;
+						sampling_probability = 1.0 / (2*PI);
+						BRDF = material.albedo / PI;
 
-				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Li1)
-				// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Lo2)
-				//     = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*(material.emittance2 + (BRDF2/prob2)*cos(theta2)*Li2))
-				//
-				// <=> Lo1 = (1/n)SUM(material.emittance1*attenuation0 + attenuation1*(material.emittance2 + ...))
-				
-				// attenuation0 = 1
-				// attenuation1 = (BRDF1/prob1)*cos(theta1)
-				// attenuation2 = (BRDF1/prob1)*cos(theta1) * (BRDF2/prob2)*cos(theta2)
-				// ...
+						next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
 
-				float sampling_probability = 1 / (2*PI);
-				vec3 BRDF = material.albedo / PI;
+						direct_light_sample(next_ray);
+					} break;
+					case MATERIAL_TYPE_SPECULAR: {
+						next_ray = next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, material, t);
 
-				if(material.type == MATERIAL_TYPE_SPECULAR) {
-					sampling_probability = 1.0;
-					BRDF = material.albedo;
-				}
-				else if(material.type == MATERIAL_TYPE_DIELECTRIC) {
-					sampling_probability = 1.0;
-					BRDF = material.albedo;
-				}
+						sampling_probability = 1.0;
+						BRDF = material.albedo;
 
-				if(material.type != MATERIAL_TYPE_DIELECTRIC) {
-					// Collect attenuation.
-					next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
-				}
-				else {
-					next_ray.attenuation *= (BRDF / sampling_probability);
-				}
+						next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
+					} break;
+					case MATERIAL_TYPE_DIELECTRIC: {
+						next_ray = update_next_ray_dielectric_triangle(ray, triangle, material, t);
 
-				if(material.type == MATERIAL_TYPE_DIFFUSE) {
-					direct_light_sample(next_ray);
+						// TODO(stekap): Probability here should correspond to the probability of the chosen path (refracted/reflected).
+						sampling_probability = 1.0;
+						BRDF = material.albedo;
+
+						next_ray.attenuation *= (BRDF / sampling_probability);
+					} break;
 				}
 
 				ray = next_ray;
 			}
 			else if(sphere_index >= 0) {
-				Sphere sphere     = spheres[sphere_index];
-				Material material = materials[sphere.mat_index];
-				
-				ray.p = ray.p + t*ray.d;
-				vec3 normal = normalize(ray.p - sphere.p);
-				ray.d = reflect(ray.d, normal);
+				// TODO(stekap): This is old startup code. Change.
 
-				ray.d = mix(ray.d, random_unit_vector_in_hemisphere(ray.p, time, normal), material.scatter_or_ior);
-				
-				if(dot(ray.d, normal) < 0) {
-					ray.p -= BIAS*normal;
-				}
-				else {
-					ray.p += BIAS*normal;
-				}
+				// Sphere sphere     = spheres[sphere_index];
+				// Material material = materials[sphere.mat_index];
 
-				// Collect emittance.
-				ray.color += ray.attenuation * material.emittance;
-				// Collect attenuation.
-				ray.attenuation *= material.albedo;
+				// ray.p = ray.p + t*ray.d;
+				// vec3 normal = normalize(ray.p - sphere.p);
+				// ray.d = reflect(ray.d, normal);
+
+				// ray.d = mix(ray.d, random_unit_vector_in_hemisphere(ray.p, time, normal), material.scatter_or_ior);
+
+				// if(dot(ray.d, normal) < 0) {
+				// 	ray.p -= BIAS*normal;
+				// }
+				// else {
+				// 	ray.p += BIAS*normal;
+				// }
+
+				// // Collect emittance.
+				// ray.color += ray.attenuation * material.emittance;
+				// // Collect attenuation.
+				// ray.attenuation *= material.albedo;
 			}
 			else {
 				// Add because the sky behaves like emitter.
