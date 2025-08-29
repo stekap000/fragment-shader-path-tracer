@@ -345,10 +345,11 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 // attenuation2 = (BRDF1/prob1)*cos(theta1) * (BRDF2/prob2)*cos(theta2)
 // ...
 
-Ray update_next_ray_diffuse_and_specular_triangle(in Ray ray, in Triangle triangle, in Material material, in float t) {
+Ray update_next_ray_diffuse_and_specular_triangle(in Ray ray, in Triangle triangle, in float t) {
 	Ray next_ray;
 	next_ray.p = ray.p + t*ray.d;
 
+	Material material = materials[triangle.mat_index];
 	vec3 normal = triangle_normal(triangle);
 
 	if(dot(ray.d, normal) < 0) {
@@ -371,43 +372,77 @@ Ray update_next_ray_diffuse_and_specular_triangle(in Ray ray, in Triangle triang
 	return next_ray;
 }
 
-Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in Material material, in float t) {
+Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in float t, inout float sampling_probability) {
 	Ray next_ray;
 	next_ray.p = ray.p + t*ray.d;
 
+	Material material = materials[triangle.mat_index];
 	vec3 normal = triangle_normal(triangle);
 
 	float refraction_ratio = ray.ior / material.scatter_or_ior;
 
-	if(ray.ior == material.scatter_or_ior) {
+	bool inside = dot(ray.d, normal) > 0;
+
+	if(inside) {
 		refraction_ratio = ray.ior;
 	}
 
-	vec3 perpendicular_direction = refraction_ratio*(ray.d - dot(ray.d, normal)*normal);
-	float perpendicular_direction_length = length(perpendicular_direction);
-	vec3 parallel_direction = -normal*sqrt(1 - pow(perpendicular_direction_length, 2));
-	next_ray.d = normalize(perpendicular_direction + parallel_direction);
+	float cos_i = -dot(ray.d, normal);
+	float sin_t_sq = refraction_ratio*refraction_ratio*(1.0 - cos_i*cos_i);
+	float cos_t = sqrt(1 - sin_t_sq);
+	vec3 refracted_dir = normalize(refraction_ratio*ray.d + (refraction_ratio*cos_i - cos_t)*normal);
 
-	if(dot(ray.d, normal) < 0) {
-		next_ray.p -= BIAS*normal;
-	}
-	else {
-		next_ray.p += BIAS*normal;
-	}
+	float R_p = pow((refraction_ratio*cos_i - cos_t)/(refraction_ratio*cos_i + cos_t), 2);
+	float R_s = pow((cos_i - refraction_ratio*cos_t)/(cos_i + refraction_ratio*cos_t), 2);
+	float reflection_probability = 0.5*(R_p + R_s);
 
-	if(ray.ior == material.scatter_or_ior) {
-		if(length(parallel_direction) < BIAS) {
+	bool reflection = random_0_to_1(next_ray.p, time) < reflection_probability;
+
+	if(inside) {
+		// Total internal reflection.
+		if(sin_t_sq > 1) {
 			next_ray.ior = material.scatter_or_ior;
 			next_ray.n = -normal;
-			next_ray.d = normalize(perpendicular_direction) - BIAS*normal;
-			next_ray.p -= 2*BIAS*normal;
+			next_ray.d = normalize(refracted_dir - BIAS*normal);
+			next_ray.p -= BIAS*normal;
+
+			sampling_probability = 1.0;
 		}
 		else {
-			next_ray.ior = 1.0;
-			next_ray.n = normal;
+			if(reflection) {
+				next_ray.p -= BIAS*normal;
+				next_ray.d = reflect(ray.d, normal);
+
+				next_ray.ior = material.scatter_or_ior;
+				next_ray.n = -normal;
+
+				sampling_probability = reflection_probability;
+			}
+			else {
+				next_ray.p += BIAS*normal;
+				next_ray.d = refracted_dir;
+
+				next_ray.ior = 1.0;
+				next_ray.n = normal;
+
+				sampling_probability = 1.0 - reflection_probability;
+			}
 		}
 	}
 	else {
+		if(reflection) {
+			next_ray.p += BIAS*normal;
+			next_ray.d = reflect(ray.d, normal);
+
+			sampling_probability = reflection_probability;
+		}
+		else {
+			next_ray.p -= BIAS*normal;
+			next_ray.d = refracted_dir;
+
+			sampling_probability = 1.0 - reflection_probability;
+		}
+
 		next_ray.ior = material.scatter_or_ior;
 		next_ray.n = -normal;
 	}
@@ -415,6 +450,8 @@ Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in Mat
 	next_ray.color = ray.color;
 	next_ray.attenuation = ray.attenuation;
 	next_ray.origin_material = triangle.mat_index;
+
+	sampling_probability = 0.9;
 
 	return next_ray;
 }
@@ -445,7 +482,7 @@ void direct_light_sample(inout Ray next_ray) {
 	// Direct light sampling uses the area form of the integral in the rendering equation. This is why we don't just
 	// have scaling with one cosine term, but with two plus with the inverse of distance squared.
 
-	float visibility = float(triangle_index == 0 || triangle_index == 1);
+	float visibility = float(triangle_index == 0 || triangle_index == 1 || materials[triangles[triangle_index].mat_index].type == MATERIAL_TYPE_DIELECTRIC);
 	float geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
 	float light_area = 13650;
 
@@ -585,9 +622,10 @@ void main() {
 				float sampling_probability;
 				vec3 BRDF;
 
+				// TODO(stekap): Handling code has a similar form, so it could be subject to speedup.
 				switch(material.type) {
 					case MATERIAL_TYPE_DIFFUSE: {
-						next_ray = next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, material, t);
+						next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, t);
 
 						sampling_probability = 1.0 / (2*PI);
 						BRDF = material.albedo / PI;
@@ -597,7 +635,7 @@ void main() {
 						direct_light_sample(next_ray);
 					} break;
 					case MATERIAL_TYPE_SPECULAR: {
-						next_ray = next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, material, t);
+						next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, t);
 
 						sampling_probability = 1.0;
 						BRDF = material.albedo;
@@ -605,10 +643,10 @@ void main() {
 						next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
 					} break;
 					case MATERIAL_TYPE_DIELECTRIC: {
-						next_ray = update_next_ray_dielectric_triangle(ray, triangle, material, t);
+						next_ray = update_next_ray_dielectric_triangle(ray, triangle, t, sampling_probability);
 
 						// TODO(stekap): Probability here should correspond to the probability of the chosen path (refracted/reflected).
-						sampling_probability = 1.0;
+						//sampling_probability = 1.0;
 						BRDF = material.albedo;
 
 						next_ray.attenuation *= (BRDF / sampling_probability);
