@@ -377,15 +377,10 @@ Ray update_next_ray_diffuse_and_specular_triangle(in Ray ray, in Triangle triang
 	return next_ray;
 }
 
-Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in float t, inout float sampling_probability) {
-	Ray next_ray;
-	next_ray.p = ray.p + t*ray.d;
-
-	Material material = materials[triangle.mat_index];
-	vec3 normal = triangle_normal(triangle);
+float refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
+	float sampling_probability = 1.0;
 
 	float refraction_ratio = ray.ior / material.scatter_or_ior;
-
 	bool inside = dot(ray.d, normal) > 0;
 
 	if(inside) {
@@ -452,6 +447,18 @@ Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in flo
 			sampling_probability = 1.0 - reflection_probability;
 		}
 	}
+
+	return sampling_probability;
+}
+
+Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in float t, inout float sampling_probability) {
+	Ray next_ray;
+	next_ray.p = ray.p + t*ray.d;
+
+	Material material = materials[triangle.mat_index];
+	vec3 normal = triangle_normal(triangle);
+
+	sampling_probability = refract(ray, next_ray, material, normal);
 
 	next_ray.color = ray.color;
 	next_ray.attenuation = ray.attenuation;
@@ -467,78 +474,15 @@ Ray update_next_ray_dielectric_sphere(in Ray ray, in Sphere sphere, in float t, 
 	Material material = materials[sphere.mat_index];
 	vec3 normal = sphere_normal(sphere, next_ray.p);
 
-	float refraction_ratio = ray.ior / material.scatter_or_ior;
-
-	bool inside = dot(ray.d, normal) > 0;
-
-	if(inside) {
-		refraction_ratio = ray.ior;
-	}
-
-	float cos_i = -dot(ray.d, normal);
-	float sin_t_sq = refraction_ratio*refraction_ratio*(1.0 - cos_i*cos_i);
-	float cos_t = sqrt(1 - sin_t_sq);
-	vec3 refracted_dir = normalize(refraction_ratio*ray.d + (refraction_ratio*cos_i - cos_t)*normal);
-
-	float R_p = pow((refraction_ratio*cos_i - cos_t)/(refraction_ratio*cos_i + cos_t), 2);
-	float R_s = pow((cos_i - refraction_ratio*cos_t)/(cos_i + refraction_ratio*cos_t), 2);
-	float reflection_probability = 0.5*(R_p + R_s);
-
-	bool reflection = random_0_to_1(next_ray.p, time) < reflection_probability;
-
-	if(inside) {
-		// Total internal reflection.
-		if(sin_t_sq > 1) {
-			next_ray.ior = material.scatter_or_ior;
-			next_ray.n = -normal;
-			next_ray.d = normalize(refracted_dir - BIAS*normal);
-			next_ray.p -= BIAS*normal;
-
-			sampling_probability = 1.0;
-		}
-		else {
-			if(reflection) {
-				next_ray.p -= BIAS*normal;
-				next_ray.d = reflect(ray.d, normal);
-
-				next_ray.ior = material.scatter_or_ior;
-				next_ray.n = -normal;
-
-				sampling_probability = reflection_probability;
-			}
-			else {
-				next_ray.p += BIAS*normal;
-				next_ray.d = refracted_dir;
-
-				next_ray.ior = 1.0;
-				next_ray.n = normal;
-
-				sampling_probability = 1.0 - reflection_probability;
-			}
-		}
-	}
-	else {
-		if(reflection) {
-			next_ray.p += BIAS*normal;
-			next_ray.d = reflect(ray.d, normal);
-			next_ray.n = normal;
-			next_ray.ior = 1.0;
-
-			sampling_probability = reflection_probability;
-		}
-		else {
-			next_ray.p -= BIAS*normal;
-			next_ray.d = refracted_dir;
-			next_ray.n = -normal;
-			next_ray.ior = material.scatter_or_ior;
-
-			sampling_probability = 1.0 - reflection_probability;
-		}
-	}
+	sampling_probability = refract(ray, next_ray, material, normal);
 
 	next_ray.color = ray.color;
 	next_ray.attenuation = ray.attenuation;
 	next_ray.origin_material = sphere.mat_index;
+
+	// if(sin_t_sq > 1 && R_p > 1 + BIAS && R_s > 1 + BIAS) {
+	// 	next_ray.color = vec3(10, 10, 10);
+	// }
 
 	return next_ray;
 }
