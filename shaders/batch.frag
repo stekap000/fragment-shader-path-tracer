@@ -7,7 +7,7 @@
 #define MAX_FLOAT          3.40282347e+38f
 #define MAX_SPHERE_COUNT   32
 #define MAX_MATERIAL_COUNT 32
-#define MAX_TRIANGLE_COUNT 32
+#define MAX_TRIANGLE_COUNT 64
 #define PI                 3.14159265358979323846
 
 struct Sphere {
@@ -15,6 +15,10 @@ struct Sphere {
 	float r;
 	unsigned int mat_index;
 };
+
+vec3 sphere_normal(in Sphere s, in vec3 collision_point) {
+	return normalize(collision_point - s.p);
+}
 
 struct Triangle {
 	vec3 p1;
@@ -24,6 +28,7 @@ struct Triangle {
 };
 
 // NOTE(stekap): Right hand rule.
+// NOTE(stekap): Current assumption is that the normal is the same in every point of the triangle.
 vec3 triangle_normal(in Triangle t) {
 	return normalize(cross(t.p2 - t.p1, t.p3 - t.p1));
 }
@@ -433,23 +438,107 @@ Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in flo
 		if(reflection) {
 			next_ray.p += BIAS*normal;
 			next_ray.d = reflect(ray.d, normal);
+			next_ray.n = normal;
+			next_ray.ior = 1.0;
 
 			sampling_probability = reflection_probability;
 		}
 		else {
 			next_ray.p -= BIAS*normal;
 			next_ray.d = refracted_dir;
+			next_ray.n = -normal;
+			next_ray.ior = material.scatter_or_ior;
 
 			sampling_probability = 1.0 - reflection_probability;
 		}
-
-		next_ray.ior = material.scatter_or_ior;
-		next_ray.n = -normal;
 	}
 
 	next_ray.color = ray.color;
 	next_ray.attenuation = ray.attenuation;
 	next_ray.origin_material = triangle.mat_index;
+
+	return next_ray;
+}
+
+Ray update_next_ray_dielectric_sphere(in Ray ray, in Sphere sphere, in float t, inout float sampling_probability) {
+	Ray next_ray;
+	next_ray.p = ray.p + t*ray.d;
+
+	Material material = materials[sphere.mat_index];
+	vec3 normal = sphere_normal(sphere, next_ray.p);
+
+	float refraction_ratio = ray.ior / material.scatter_or_ior;
+
+	bool inside = dot(ray.d, normal) > 0;
+
+	if(inside) {
+		refraction_ratio = ray.ior;
+	}
+
+	float cos_i = -dot(ray.d, normal);
+	float sin_t_sq = refraction_ratio*refraction_ratio*(1.0 - cos_i*cos_i);
+	float cos_t = sqrt(1 - sin_t_sq);
+	vec3 refracted_dir = normalize(refraction_ratio*ray.d + (refraction_ratio*cos_i - cos_t)*normal);
+
+	float R_p = pow((refraction_ratio*cos_i - cos_t)/(refraction_ratio*cos_i + cos_t), 2);
+	float R_s = pow((cos_i - refraction_ratio*cos_t)/(cos_i + refraction_ratio*cos_t), 2);
+	float reflection_probability = 0.5*(R_p + R_s);
+
+	bool reflection = random_0_to_1(next_ray.p, time) < reflection_probability;
+
+	if(inside) {
+		// Total internal reflection.
+		if(sin_t_sq > 1) {
+			next_ray.ior = material.scatter_or_ior;
+			next_ray.n = -normal;
+			next_ray.d = normalize(refracted_dir - BIAS*normal);
+			next_ray.p -= BIAS*normal;
+
+			sampling_probability = 1.0;
+		}
+		else {
+			if(reflection) {
+				next_ray.p -= BIAS*normal;
+				next_ray.d = reflect(ray.d, normal);
+
+				next_ray.ior = material.scatter_or_ior;
+				next_ray.n = -normal;
+
+				sampling_probability = reflection_probability;
+			}
+			else {
+				next_ray.p += BIAS*normal;
+				next_ray.d = refracted_dir;
+
+				next_ray.ior = 1.0;
+				next_ray.n = normal;
+
+				sampling_probability = 1.0 - reflection_probability;
+			}
+		}
+	}
+	else {
+		if(reflection) {
+			next_ray.p += BIAS*normal;
+			next_ray.d = reflect(ray.d, normal);
+			next_ray.n = normal;
+			next_ray.ior = 1.0;
+
+			sampling_probability = reflection_probability;
+		}
+		else {
+			next_ray.p -= BIAS*normal;
+			next_ray.d = refracted_dir;
+			next_ray.n = -normal;
+			next_ray.ior = material.scatter_or_ior;
+
+			sampling_probability = 1.0 - reflection_probability;
+		}
+	}
+
+	next_ray.color = ray.color;
+	next_ray.attenuation = ray.attenuation;
+	next_ray.origin_material = sphere.mat_index;
 
 	return next_ray;
 }
@@ -614,7 +703,12 @@ void main() {
 			int sphere_index = -1;
 
 			intersect_triangles(ray, triangle_index, t);
+			float t_temp = t;
 			intersect_spheres(ray, sphere_index, t);
+			if(t < t_temp) {
+				triangle_index = -1;
+			}
+
 
 			if(triangle_index >= 0) {
 				Triangle triangle = triangles[triangle_index];
@@ -671,28 +765,26 @@ void main() {
 				ray = next_ray;
 			}
 			else if(sphere_index >= 0) {
-				// TODO(stekap): This is old startup code. Change.
+				Sphere sphere     = spheres[sphere_index];
+				Material material = materials[sphere.mat_index];
 
-				// Sphere sphere     = spheres[sphere_index];
-				// Material material = materials[sphere.mat_index];
+				Ray next_ray;
+				float sampling_probability;
+				vec3 BRDF;
 
-				// ray.p = ray.p + t*ray.d;
-				// vec3 normal = normalize(ray.p - sphere.p);
-				// ray.d = reflect(ray.d, normal);
+				switch(material.type) {
+					case MATERIAL_TYPE_DIELECTRIC: {
+						next_ray = update_next_ray_dielectric_sphere(ray, sphere, t, sampling_probability);
 
-				// ray.d = mix(ray.d, random_unit_vector_in_hemisphere(ray.p, time, normal), material.scatter_or_ior);
+						// TODO(stekap): Probability here should correspond to the probability of the chosen path (refracted/reflected).
+						//sampling_probability = 1.0;
+						BRDF = material.albedo;
 
-				// if(dot(ray.d, normal) < 0) {
-				// 	ray.p -= BIAS*normal;
-				// }
-				// else {
-				// 	ray.p += BIAS*normal;
-				// }
+						next_ray.attenuation *= (BRDF / sampling_probability);
+					} break;
+				}
 
-				// // Collect emittance.
-				// ray.color += ray.attenuation * material.emittance;
-				// // Collect attenuation.
-				// ray.attenuation *= material.albedo;
+				ray = next_ray;
 			}
 			else {
 				// Add because the sky behaves like emitter.

@@ -366,7 +366,7 @@ struct Camera {
 };
 
 namespace ShaderConfig {
-	Internal constexpr u32 max_sphere_count        = 0;
+	Internal constexpr u32 max_sphere_count        = 32;
 	Internal constexpr u32 max_material_count      = 32;
 	Internal constexpr u32 max_triangle_count      = 64;
 
@@ -440,9 +440,9 @@ struct Scene {
 		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // White
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // Green
-		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.0f}, 0.95f,  MATERIAL_TYPE_BLACKBODY));  // Light
+		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.5f}, 0.95f,  MATERIAL_TYPE_BLACKBODY));  // Light
 		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.005f, MATERIAL_TYPE_SPECULAR));   // Mirror
-		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 1.4f,   MATERIAL_TYPE_DIELECTRIC)); // Glass
+		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 2.0f,   MATERIAL_TYPE_DIELECTRIC)); // Glass
 
 		place_light(triangles, 4);
 		place_back_wall(triangles, 1);
@@ -450,8 +450,10 @@ struct Scene {
 		place_right_wall(triangles, 3);
 		place_floor(triangles, 1);
 		place_ceiling(triangles, 1);
-		place_short_block(triangles, 6);
-		place_tall_block(triangles, 6, {50, 0, 0});
+		// place_short_block(triangles, 6);
+		// place_tall_block(triangles, 6);
+
+		spheres.push_back(Sphere({200, 130, -200}, 100.0f, 6));
 
 		return Scene(spheres, triangles, materials);
 	}
