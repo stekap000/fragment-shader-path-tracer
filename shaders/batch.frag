@@ -479,73 +479,89 @@ void direct_light_sample(inout Ray next_ray) {
 
 	// Direct light sampling uses the area form of the integral in the rendering equation. This is why we don't just
 	// have scaling with one cosine term, but with two plus with the inverse of distance squared.
-	//
+
+
+	// float visibility = float(triangle_index == 0 || triangle_index == 1 || materials[triangles[triangle_index].mat_index].type == MATERIAL_TYPE_DIELECTRIC);
 	float visibility = float(triangle_index == 0 || triangle_index == 1);
-	//float visibility = float(triangle_index == 0 || triangle_index == 1 || materials[triangles[triangle_index].mat_index].type == MATERIAL_TYPE_DIELECTRIC);
 	float geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
 	float light_area = 13650;
 
 	geometry = max(geometry, 0);
 
 	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
-
-	// TESTING LIGHT RAY TRAVERSAL THROUGH DIELECTRIC
-
-	// float visibility = 0.0;
-	// float geometry = 0.0;
-	// float light_area = 13650.0;
-
-	// Ray next_ray_temp;
-
-	// for(unsigned int i = 0; i < 8; ++i) {
-	// 	intersect_triangles(light_ray, triangle_index, t);
-
-	// 	if(t < 0) {
-	// 		break;
-	// 	}
-
-	// 	unsigned int type = materials[triangles[triangle_index].mat_index].type;
-
-	// 	if(type == MATERIAL_TYPE_BLACKBODY) {
-	// 		visibility = 1.0;
-	// 		geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
-	// 		geometry = max(geometry, 0);
-	// 		break;
-	// 	}
-
-	// 	if(type != MATERIAL_TYPE_DIELECTRIC) {
-	// 		break;
-	// 	}
-
-	// 	Triangle triangle = triangles[triangle_index];
-	// 	Material material = materials[triangle.mat_index];
-	// 	vec3 normal = triangle_normal(triangle);
-
-	// 	next_ray_temp.p = light_ray.p + t*light_ray.d;
-
-	// 	update_next_ray_dielectric(light_ray, next_ray_temp, material, normal);
-
-	// 	next_ray_temp.color = light_ray.color;
-	// 	next_ray_temp.attenuation = light_ray.attenuation;
-	// 	next_ray_temp.origin_material = triangle.mat_index;
-
-	// 	light_dir = vec3(278.0, 548.8, -275.0) - next_ray_temp.p;
-	// 	//light_ray.d = light_dir;
-	// 	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
-
-	// 	intersect_triangles(next_ray_temp, triangle_index, t);
-
-	// 	//light_ray = next_ray;
-
-	// 	// if(vec3(278.0, 548.8, -275.0) - light_ray.p)
-	// 	// vec3 light_dir = vec3(278.0, 548.8, -275.0) - light_ray.p;
-	// 	// light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
-	// }
-
-	// next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
 }
 
+void direct_light_sample_with_dielectric_handling(inout Ray next_ray) {
+	// NOTE(stekap): This is a testing code for whether direct light samplng needs special treatment when there are dielectrics in the scene.
 
+	float t = MAX_FLOAT;
+	int triangle_index = -1;
+
+	Ray light_ray = next_ray;
+
+	vec3 light_dir = vec3(278.0, 548.8, -275.0) - next_ray.p;
+
+	// TODO(stekap): This ray is directed towards light i.e. it is a form of importance sampling. Think of this
+	//               when multiple lights are included.
+	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
+
+	float visibility = 0.0;
+	float geometry = 0.0;
+	float light_area = 13650.0;
+
+	Ray next_ray_temp = light_ray;
+
+	for(unsigned int i = 0; i < 8; ++i) {
+		triangle_index = -1;
+		intersect_triangles(light_ray, triangle_index, t);
+
+		if(triangle_index < 0) {
+			break;
+		}
+
+		unsigned int type = materials[triangles[triangle_index].mat_index].type;
+
+		if(type == MATERIAL_TYPE_BLACKBODY) {
+			visibility = 1.0;
+			geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
+			geometry = max(geometry, 0);
+			break;
+		}
+
+		// if(type == MATERIAL_TYPE_DIFFUSE) {
+		// 	light_dir = vec3(278.0, 548.8, -275.0) - light_ray.p;
+		// 	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
+
+		// 	triangle_index = -1;
+		// 	intersect_triangles(light_ray, triangle_index, t);
+
+		// 	if(triangle_index == 0 || triangle_index == 1) {
+		// 		visibility = 1.0;
+		// 		geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
+		// 		geometry = max(geometry, 0);
+		// 	}
+
+		// 	break;
+		// }
+
+		if(type != MATERIAL_TYPE_DIELECTRIC) {
+			break;
+		}
+
+		Triangle triangle = triangles[triangle_index];
+		Material material = materials[triangle.mat_index];
+		vec3 normal = triangle_normal(triangle);
+		float sampling_probability = 1.0;
+
+		next_ray_temp = update_next_ray_dielectric_triangle(next_ray_temp, triangle, t, sampling_probability);
+		sampling_probability = 1.0;
+
+		light_dir = vec3(278.0, 548.8, -275.0) - next_ray_temp.p;
+		light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
+	}
+
+	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
+}
 
 // TODO(stekap): Decide on whether to use something like explicit material type or have properties fully encoded in parameters.
 //               For example, when direct sampling is used we can't do it for specular surfaces since they obey Snell's law
