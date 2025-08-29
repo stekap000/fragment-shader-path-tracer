@@ -366,9 +366,9 @@ struct Camera {
 };
 
 namespace ShaderConfig {
-	Internal constexpr u32 max_sphere_count        = 32;
+	Internal constexpr u32 max_sphere_count        = 0;
 	Internal constexpr u32 max_material_count      = 32;
-	Internal constexpr u32 max_triangle_count      = 32;
+	Internal constexpr u32 max_triangle_count      = 64;
 
 	Internal constexpr u32 spheres_ub_bind_index   = 0;
 	Internal constexpr u32 triangles_ub_bind_index = 1;
@@ -451,7 +451,7 @@ struct Scene {
 		place_floor(triangles, 1);
 		place_ceiling(triangles, 1);
 		place_short_block(triangles, 6);
-		place_tall_block(triangles, 6);
+		place_tall_block(triangles, 6, {50, 0, 0});
 
 		return Scene(spheres, triangles, materials);
 	}
@@ -516,6 +516,10 @@ struct Scene {
 		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {316.0f, 165.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, material_index));
 		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, {474.0f, 0.0f, -225.0f}, material_index));
 
+		// Bottom
+		// triangles.push_back(Triangle({426.0f, 0.1f, -65.0f}, {316.0f, 0.1f, -272.0f}, {474.0f, 0.1f, -225.0f}, material_index));
+		// triangles.push_back(Triangle({266.0f, 0.1f, -114.0f}, {316.0f, 0.1f, -272.0f}, {426.0f, 0.1f, -65.0f}, material_index));
+
 		for(int i = old_triangle_count; i < old_triangle_count + 10; ++i) {
 			triangles[i].translate(translation_vector);
 		}
@@ -544,6 +548,10 @@ struct Scene {
 		// Back
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {84.0f, 330.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, material_index));
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, {242.0f, 0.0f, -456.0f}, material_index));
+
+		// Bottom
+		// triangles.push_back(Triangle({133.0f, 0.1f, -247.0f}, {242.0f, 0.1f, -456.0f}, {291.0f, 0.1f, -296.0f}, material_index));
+		// triangles.push_back(Triangle({133.0f, 0.1f, -247.0f}, {84.0f, 0.1f, -406.0f}, {242.0f, 0.1f, -456.0f}, material_index));
 
 		for(int i = old_triangle_count; i < old_triangle_count + 10; ++i) {
 			triangles[i].translate(translation_vector);
