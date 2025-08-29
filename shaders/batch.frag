@@ -195,7 +195,7 @@ float LFSR_Rand_Gen_f(in int n) {
 float hash(vec3 xyz) {
 	int n = int(dot(xyz, vec3(40.0, 6400.0, 0.0)));
 	// int n = int(xyz.x*40.0 + xyz.y*6400.0 + xyz.z*15000.0);
-	return LFSR_Rand_Gen_f(n);
+	return abs(LFSR_Rand_Gen_f(n));
 }
 
 // float hash(vec3 xyz) {
@@ -451,8 +451,6 @@ Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in flo
 	next_ray.attenuation = ray.attenuation;
 	next_ray.origin_material = triangle.mat_index;
 
-	sampling_probability = 0.9;
-
 	return next_ray;
 }
 
@@ -481,8 +479,9 @@ void direct_light_sample(inout Ray next_ray) {
 
 	// Direct light sampling uses the area form of the integral in the rendering equation. This is why we don't just
 	// have scaling with one cosine term, but with two plus with the inverse of distance squared.
-
-	float visibility = float(triangle_index == 0 || triangle_index == 1 || materials[triangles[triangle_index].mat_index].type == MATERIAL_TYPE_DIELECTRIC);
+	//
+	float visibility = float(triangle_index == 0 || triangle_index == 1);
+	//float visibility = float(triangle_index == 0 || triangle_index == 1 || materials[triangles[triangle_index].mat_index].type == MATERIAL_TYPE_DIELECTRIC);
 	float geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
 	float light_area = 13650;
 
@@ -646,7 +645,7 @@ void main() {
 						next_ray = update_next_ray_dielectric_triangle(ray, triangle, t, sampling_probability);
 
 						// TODO(stekap): Probability here should correspond to the probability of the chosen path (refracted/reflected).
-						//sampling_probability = 1.0;
+						sampling_probability = 1.0;
 						BRDF = material.albedo;
 
 						next_ray.attenuation *= (BRDF / sampling_probability);
