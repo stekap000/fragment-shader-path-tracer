@@ -369,7 +369,6 @@ Ray update_next_ray_diffuse_and_specular_triangle(in Ray ray, in Triangle triang
 							   material.scatter_or_ior));
 	next_ray.n = normal;
 	next_ray.ior = ray.ior;
-
 	next_ray.color = ray.color;
 	next_ray.attenuation = ray.attenuation;
 	next_ray.origin_material = triangle.mat_index;
@@ -411,7 +410,7 @@ float refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 norm
 		else {
 			if(reflection) {
 				next_ray.p -= BIAS*normal;
-				next_ray.d = reflect(ray.d, normal);
+				next_ray.d = reflect(ray.d, -normal);
 
 				next_ray.ior = material.scatter_or_ior;
 				next_ray.n = -normal;
@@ -480,10 +479,6 @@ Ray update_next_ray_dielectric_sphere(in Ray ray, in Sphere sphere, in float t, 
 	next_ray.attenuation = ray.attenuation;
 	next_ray.origin_material = sphere.mat_index;
 
-	// if(sin_t_sq > 1 && R_p > 1 + BIAS && R_s > 1 + BIAS) {
-	// 	next_ray.color = vec3(10, 10, 10);
-	// }
-
 	return next_ray;
 }
 
@@ -496,7 +491,7 @@ Ray update_next_ray_dielectric_sphere(in Ray ray, in Sphere sphere, in float t, 
 // TODO(stekap): Direct light sampling is hardcoded for now. Change this after deciding on how the lights should be
 //               organized in memory.
 
-void direct_light_sample(inout Ray next_ray) {
+void direct_light_sample_triangle(inout Ray next_ray) {
 	float t = MAX_FLOAT;
 	int triangle_index = -1;
 	
@@ -513,7 +508,6 @@ void direct_light_sample(inout Ray next_ray) {
 	// Direct light sampling uses the area form of the integral in the rendering equation. This is why we don't just
 	// have scaling with one cosine term, but with two plus with the inverse of distance squared.
 
-
 	// float visibility = float(triangle_index == 0 || triangle_index == 1 || materials[triangles[triangle_index].mat_index].type == MATERIAL_TYPE_DIELECTRIC);
 	float visibility = float(triangle_index == 0 || triangle_index == 1);
 	float geometry = dot(light_ray.n, light_ray.d) * dot(-light_ray.d, triangle_normal(triangles[0])) / pow(distance(vec3(278.0, 548.8, -275.0), light_ray.p), 2);
@@ -524,7 +518,7 @@ void direct_light_sample(inout Ray next_ray) {
 	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
 }
 
-void direct_light_sample_with_dielectric_handling(inout Ray next_ray) {
+void direct_light_sample_triangle_with_dielectric_handling(inout Ray next_ray) {
 	// NOTE(stekap): This is a testing code for whether direct light samplng needs special treatment when there are dielectrics in the scene.
 
 	float t = MAX_FLOAT;
@@ -632,9 +626,6 @@ void main() {
 	}
 
 	if(execution_type == EXECUTION_TYPE_TRACE) {
-		// vec3 background_color = vec3(0.3, 0.3, 0.3);
-		vec3 background_color = vec3(0.0, 0.0, 0.0);
-
 		Ray ray = ray_load();
 
 		if(ray_invalid(ray)) {
@@ -653,7 +644,6 @@ void main() {
 				triangle_index = -1;
 			}
 
-
 			if(triangle_index >= 0) {
 				Triangle triangle = triangles[triangle_index];
 				Material material = materials[triangle.mat_index];
@@ -666,14 +656,13 @@ void main() {
 					// (this allows us to see the light directly)
 					ray.color += float(ray.attenuation == vec3(1.0, 1.0, 1.0)) * material.emittance;
 
-					// ray.color += ray.attenuation * material.emittance;
 					ray_invalidate(ray);
 					break;
 				}
 
 				Ray next_ray;
 				float sampling_probability;
-				vec3 BRDF;
+				vec3 BSDF;
 
 				// TODO(stekap): Handling code has a similar form, so it could be subject to speedup.
 				switch(material.type) {
@@ -681,28 +670,27 @@ void main() {
 						next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, t);
 
 						sampling_probability = 1.0 / (2*PI);
-						BRDF = material.albedo / PI;
+						BSDF = material.albedo / PI;
 
-						next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
+						next_ray.attenuation *= (BSDF / sampling_probability) * dot(ray.d, ray.n);
 
-						direct_light_sample(next_ray);
+						direct_light_sample_triangle(next_ray);
 					} break;
 					case MATERIAL_TYPE_SPECULAR: {
 						next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, t);
 
 						sampling_probability = 1.0;
-						BRDF = material.albedo;
+						BSDF = material.albedo;
 
-						next_ray.attenuation *= (BRDF / sampling_probability) * dot(ray.d, ray.n);
+						next_ray.attenuation *= (BSDF / sampling_probability) * dot(ray.d, ray.n);
 					} break;
 					case MATERIAL_TYPE_DIELECTRIC: {
 						next_ray = update_next_ray_dielectric_triangle(ray, triangle, t, sampling_probability);
 
-						// TODO(stekap): Probability here should correspond to the probability of the chosen path (refracted/reflected).
 						sampling_probability = 1.0;
-						BRDF = material.albedo;
+						BSDF = material.albedo;
 
-						next_ray.attenuation *= (BRDF / sampling_probability);
+						next_ray.attenuation *= (BSDF / sampling_probability) * dot(ray.d, ray.n);
 					} break;
 				}
 
@@ -714,23 +702,23 @@ void main() {
 
 				Ray next_ray;
 				float sampling_probability;
-				vec3 BRDF;
+				vec3 BSDF;
 
 				switch(material.type) {
 					case MATERIAL_TYPE_DIELECTRIC: {
 						next_ray = update_next_ray_dielectric_sphere(ray, sphere, t, sampling_probability);
 
-						// TODO(stekap): Probability here should correspond to the probability of the chosen path (refracted/reflected).
-						//sampling_probability = 1.0;
-						BRDF = material.albedo;
+						sampling_probability = 1.0;
+						BSDF = material.albedo;
 
-						next_ray.attenuation *= (BRDF / sampling_probability);
+						next_ray.attenuation *= (BSDF / sampling_probability * dot(ray.d, ray.n));
 					} break;
 				}
 
 				ray = next_ray;
 			}
 			else {
+				vec3 background_color = vec3(0.0, 0.0, 0.0);
 				// Add because the sky behaves like emitter.
 				ray.color += ray.attenuation * background_color;
 				ray_invalidate(ray);
