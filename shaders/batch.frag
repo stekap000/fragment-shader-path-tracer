@@ -338,44 +338,7 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 	}
 }
 
-// Iterative form for the rendering equation:
-// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Li1)
-// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Lo2)
-//     = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*(material.emittance2 + (BRDF2/prob2)*cos(theta2)*Li2))
-//
-// <=> Lo1 = (1/n)SUM(material.emittance1*attenuation0 + attenuation1*(material.emittance2 + ...))
-
-// attenuation0 = 1
-// attenuation1 = (BRDF1/prob1)*cos(theta1)
-// attenuation2 = (BRDF1/prob1)*cos(theta1) * (BRDF2/prob2)*cos(theta2)
-// ...
-
-Ray update_next_ray_diffuse_and_specular_triangle(in Ray ray, in Triangle triangle, in float t) {
-	Ray next_ray;
-	next_ray.p = ray.p + t*ray.d;
-
-	Material material = materials[triangle.mat_index];
-	vec3 normal = triangle_normal(triangle);
-
-	if(dot(ray.d, normal) < 0) {
-		next_ray.p += BIAS*normal;
-	}
-	else {
-		next_ray.p -= BIAS*normal;
-	}
-
-	next_ray.d = normalize(mix(reflect(ray.d, normal),
-							   random_unit_vector_in_hemisphere(next_ray.p, time, normal),
-							   material.scatter_or_ior));
-	next_ray.n = normal;
-	next_ray.ior = ray.ior;
-	next_ray.color = ray.color;
-	next_ray.attenuation = ray.attenuation;
-	next_ray.origin_material = triangle.mat_index;
-
-	return next_ray;
-}
-
+// TODO(stekap): Schlick's approximation if needed.
 float refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
 	float sampling_probability = 1.0;
 
@@ -450,36 +413,46 @@ float refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 norm
 	return sampling_probability;
 }
 
-Ray update_next_ray_dielectric_triangle(in Ray ray, in Triangle triangle, in float t, inout float sampling_probability) {
-	Ray next_ray;
+// Iterative form for the rendering equation:
+// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Li1)
+// Lo1 = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*Lo2)
+//     = (1/n)SUM(material.emittance1 + (BRDF1/prob1)*cos(theta1)*(material.emittance2 + (BRDF2/prob2)*cos(theta2)*Li2))
+//
+// <=> Lo1 = (1/n)SUM(material.emittance1*attenuation0 + attenuation1*(material.emittance2 + ...))
+
+// attenuation0 = 1
+// attenuation1 = (BRDF1/prob1)*cos(theta1)
+// attenuation2 = (BRDF1/prob1)*cos(theta1) * (BRDF2/prob2)*cos(theta2)
+// ...
+
+void update_next_ray_diffuse_and_specular(in Ray ray, inout Ray next_ray, in Material material, in unsigned int mat_index, in vec3 normal, in float t) {
 	next_ray.p = ray.p + t*ray.d;
 
-	Material material = materials[triangle.mat_index];
-	vec3 normal = triangle_normal(triangle);
+	if(dot(ray.d, normal) < 0) {
+		next_ray.p += BIAS*normal;
+	}
+	else {
+		next_ray.p -= BIAS*normal;
+	}
 
-	sampling_probability = refract(ray, next_ray, material, normal);
-
+	next_ray.d = normalize(mix(reflect(ray.d, normal),
+							   random_unit_vector_in_hemisphere(next_ray.p, time, normal),
+							   material.scatter_or_ior));
+	next_ray.n = normal;
+	next_ray.ior = ray.ior;
 	next_ray.color = ray.color;
 	next_ray.attenuation = ray.attenuation;
-	next_ray.origin_material = triangle.mat_index;
-
-	return next_ray;
+	next_ray.origin_material = mat_index;
 }
 
-Ray update_next_ray_dielectric_sphere(in Ray ray, in Sphere sphere, in float t, inout float sampling_probability) {
-	Ray next_ray;
+void update_next_ray_dielectric(in Ray ray, inout Ray next_ray, in Material material, in unsigned int mat_index, vec3 normal, in float t) {
 	next_ray.p = ray.p + t*ray.d;
 
-	Material material = materials[sphere.mat_index];
-	vec3 normal = sphere_normal(sphere, next_ray.p);
-
-	sampling_probability = refract(ray, next_ray, material, normal);
+	refract(ray, next_ray, material, normal);
 
 	next_ray.color = ray.color;
 	next_ray.attenuation = ray.attenuation;
-	next_ray.origin_material = sphere.mat_index;
-
-	return next_ray;
+	next_ray.origin_material = mat_index;
 }
 
 // TODO(stekap):
@@ -576,11 +549,12 @@ void direct_light_sample_triangle_with_dielectric_handling(inout Ray next_ray) {
 		}
 
 		Triangle triangle = triangles[triangle_index];
-		Material material = materials[triangle.mat_index];
+		unsigned int mat_index = triangle.mat_index;
+		Material material = materials[mat_index];
 		vec3 normal = triangle_normal(triangle);
 		float sampling_probability = 1.0;
 
-		next_ray_temp = update_next_ray_dielectric_triangle(next_ray_temp, triangle, t, sampling_probability);
+		update_next_ray_dielectric(next_ray_temp, next_ray_temp, material, mat_index, normal, t);
 		sampling_probability = 1.0;
 
 		light_dir = vec3(278.0, 548.8, -275.0) - next_ray_temp.p;
@@ -646,7 +620,9 @@ void main() {
 
 			if(triangle_index >= 0) {
 				Triangle triangle = triangles[triangle_index];
-				Material material = materials[triangle.mat_index];
+				unsigned int mat_index = triangle.mat_index;
+				Material material = materials[mat_index];
+				vec3 normal = triangle_normal(triangle);
 
 				if(material.type == MATERIAL_TYPE_BLACKBODY) {
 					// Add light emittance that is properly attenuated if the previous hit material was specular.
@@ -667,38 +643,40 @@ void main() {
 				// TODO(stekap): Handling code has a similar form, so it could be subject to speedup.
 				switch(material.type) {
 					case MATERIAL_TYPE_DIFFUSE: {
-						next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, t);
+						update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
 
 						sampling_probability = 1.0 / (2*PI);
-						BSDF = material.albedo / PI;
+						BSDF = vec3(1.0 / PI);
 
-						next_ray.attenuation *= (BSDF / sampling_probability) * dot(ray.d, ray.n);
+						next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
 
 						direct_light_sample_triangle(next_ray);
 					} break;
 					case MATERIAL_TYPE_SPECULAR: {
-						next_ray = update_next_ray_diffuse_and_specular_triangle(ray, triangle, t);
+						update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
 
 						sampling_probability = 1.0;
-						BSDF = material.albedo;
+						BSDF = vec3(1.0);
 
-						next_ray.attenuation *= (BSDF / sampling_probability) * dot(ray.d, ray.n);
+						next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
 					} break;
 					case MATERIAL_TYPE_DIELECTRIC: {
-						next_ray = update_next_ray_dielectric_triangle(ray, triangle, t, sampling_probability);
+						update_next_ray_dielectric(ray, next_ray, material, mat_index, normal, t);
 
 						sampling_probability = 1.0;
-						BSDF = material.albedo;
+						BSDF = vec3(1.0);
 
-						next_ray.attenuation *= (BSDF / sampling_probability) * dot(ray.d, ray.n);
+						next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
 					} break;
 				}
 
 				ray = next_ray;
 			}
 			else if(sphere_index >= 0) {
-				Sphere sphere     = spheres[sphere_index];
+				Sphere sphere = spheres[sphere_index];
+				unsigned int mat_index = sphere.mat_index;
 				Material material = materials[sphere.mat_index];
+				vec3 normal = sphere_normal(sphere, ray.p + t*ray.d);
 
 				Ray next_ray;
 				float sampling_probability;
@@ -706,7 +684,7 @@ void main() {
 
 				switch(material.type) {
 					case MATERIAL_TYPE_DIELECTRIC: {
-						next_ray = update_next_ray_dielectric_sphere(ray, sphere, t, sampling_probability);
+						update_next_ray_dielectric(ray, next_ray, material, mat_index, normal, t);
 
 						sampling_probability = 1.0;
 						BSDF = material.albedo;
