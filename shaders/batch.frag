@@ -339,9 +339,7 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 }
 
 // TODO(stekap): Schlick's approximation if needed.
-float refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
-	float sampling_probability = 1.0;
-
+void refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
 	float refraction_ratio = ray.ior / material.scatter_or_ior;
 	bool inside = dot(ray.d, normal) > 0;
 
@@ -363,31 +361,23 @@ float refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 norm
 	if(inside) {
 		// Total internal reflection.
 		if(sin_t_sq > 1) {
+			next_ray.p -= BIAS*normal;
+			next_ray.d = normalize(refracted_dir - BIAS*normal);
 			next_ray.ior = material.scatter_or_ior;
 			next_ray.n = -normal;
-			next_ray.d = normalize(refracted_dir - BIAS*normal);
-			next_ray.p -= BIAS*normal;
-
-			sampling_probability = 1.0;
 		}
 		else {
 			if(reflection) {
 				next_ray.p -= BIAS*normal;
 				next_ray.d = reflect(ray.d, -normal);
-
 				next_ray.ior = material.scatter_or_ior;
 				next_ray.n = -normal;
-
-				sampling_probability = reflection_probability;
 			}
 			else {
 				next_ray.p += BIAS*normal;
 				next_ray.d = refracted_dir;
-
 				next_ray.ior = 1.0;
 				next_ray.n = normal;
-
-				sampling_probability = 1.0 - reflection_probability;
 			}
 		}
 	}
@@ -395,22 +385,16 @@ float refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 norm
 		if(reflection) {
 			next_ray.p += BIAS*normal;
 			next_ray.d = reflect(ray.d, normal);
-			next_ray.n = normal;
 			next_ray.ior = 1.0;
-
-			sampling_probability = reflection_probability;
+			next_ray.n = normal;
 		}
 		else {
 			next_ray.p -= BIAS*normal;
 			next_ray.d = refracted_dir;
-			next_ray.n = -normal;
 			next_ray.ior = material.scatter_or_ior;
-
-			sampling_probability = 1.0 - reflection_probability;
+			next_ray.n = -normal;
 		}
 	}
-
-	return sampling_probability;
 }
 
 // Iterative form for the rendering equation:
@@ -637,6 +621,7 @@ void main() {
 				}
 
 				Ray next_ray;
+
 				float sampling_probability;
 				vec3 BSDF;
 
@@ -645,6 +630,7 @@ void main() {
 					case MATERIAL_TYPE_DIFFUSE: {
 						update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
 
+						// Actual BSDF is (albedo / PI).
 						sampling_probability = 1.0 / (2*PI);
 						BSDF = vec3(1.0 / PI);
 
@@ -663,6 +649,8 @@ void main() {
 					case MATERIAL_TYPE_DIELECTRIC: {
 						update_next_ray_dielectric(ray, next_ray, material, mat_index, normal, t);
 
+						// Actual sampling_probability is the 1 divided by the chosen Fresnel coefficient.
+						// Actual BSDF is the chosen Fresnel coefficient.
 						sampling_probability = 1.0;
 						BSDF = vec3(1.0);
 
