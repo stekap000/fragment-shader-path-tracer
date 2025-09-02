@@ -534,7 +534,8 @@ void direct_light_sample_with_dielectric_handling(inout Ray next_ray) {
 		// 	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
 
 		// 	triangle_index = -1;
-		// 	intersect_triangles(light_ray, triangle_index, t);
+		// 	sphere_index = -1;
+		// 	intersect_objects(light_ray, triangle_index, sphere_index, t);
 
 		// 	if(triangle_index == 0 || triangle_index == 1) {
 		// 		visibility = 1.0;
@@ -556,13 +557,54 @@ void direct_light_sample_with_dielectric_handling(inout Ray next_ray) {
 		float sampling_probability = 1.0;
 
 		update_next_ray_dielectric(next_ray_temp, next_ray_temp, material, mat_index, normal, t);
-		sampling_probability = 1.0;
 
 		light_dir = vec3(278.0, 548.8, -275.0) - next_ray_temp.p;
 		light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
 	}
 
 	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
+}
+
+void update_ray(inout Ray ray, in Material material, in unsigned int mat_index, in vec3 normal, in float t) {
+	Ray next_ray;
+	float sampling_probability;
+	vec3 BSDF;
+
+	// TODO(stekap): Handling code has a similar form, so it could be subject to speedup.
+	switch(material.type) {
+		case MATERIAL_TYPE_DIFFUSE: {
+			update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
+
+			// Actual BSDF is (albedo / PI).
+			sampling_probability = 1.0 / (2*PI);
+			BSDF = vec3(1.0 / PI);
+
+			next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
+
+			// direct_light_sample_with_dielectric_handling(next_ray);
+			direct_light_sample(next_ray);
+		} break;
+		case MATERIAL_TYPE_SPECULAR: {
+			update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
+
+			sampling_probability = 1.0;
+			BSDF = vec3(1.0);
+
+			next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
+		} break;
+		case MATERIAL_TYPE_DIELECTRIC: {
+			update_next_ray_dielectric(ray, next_ray, material, mat_index, normal, t);
+
+			// Actual sampling_probability is the 1 divided by the chosen Fresnel coefficient.
+			// Actual BSDF is the chosen Fresnel coefficient.
+			sampling_probability = 1.0;
+			BSDF = vec3(1.0);
+
+			next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
+		} break;
+	}
+
+	ray = next_ray;
 }
 
 // TODO(stekap): Decide on whether to use something like explicit material type or have properties fully encoded in parameters.
@@ -632,45 +674,7 @@ void main() {
 					break;
 				}
 
-				Ray next_ray;
-
-				float sampling_probability;
-				vec3 BSDF;
-
-				// TODO(stekap): Handling code has a similar form, so it could be subject to speedup.
-				switch(material.type) {
-					case MATERIAL_TYPE_DIFFUSE: {
-						update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
-
-						// Actual BSDF is (albedo / PI).
-						sampling_probability = 1.0 / (2*PI);
-						BSDF = vec3(1.0 / PI);
-
-						next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
-
-						direct_light_sample(next_ray);
-					} break;
-					case MATERIAL_TYPE_SPECULAR: {
-						update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
-
-						sampling_probability = 1.0;
-						BSDF = vec3(1.0);
-
-						next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
-					} break;
-					case MATERIAL_TYPE_DIELECTRIC: {
-						update_next_ray_dielectric(ray, next_ray, material, mat_index, normal, t);
-
-						// Actual sampling_probability is the 1 divided by the chosen Fresnel coefficient.
-						// Actual BSDF is the chosen Fresnel coefficient.
-						sampling_probability = 1.0;
-						BSDF = vec3(1.0);
-
-						next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
-					} break;
-				}
-
-				ray = next_ray;
+				update_ray(ray, material, mat_index, normal, t);
 			}
 			else if(sphere_index >= 0) {
 				Sphere sphere = spheres[sphere_index];
@@ -678,30 +682,19 @@ void main() {
 				Material material = materials[sphere.mat_index];
 				vec3 normal = sphere_normal(sphere, ray.p + t*ray.d);
 
-				Ray next_ray;
-				float sampling_probability;
-				vec3 BSDF;
+				if(material.type == MATERIAL_TYPE_BLACKBODY) {
+					// Add light emittance that is properly attenuated if the previous hit material was specular.
+					// (this allows us to see the light in specular surface)
+					ray.color += float(materials[ray.origin_material].type == MATERIAL_TYPE_SPECULAR) * ray.attenuation * material.emittance;
+					// Add light emittance when it is hit directly.
+					// (this allows us to see the light directly)
+					ray.color += float(ray.attenuation == vec3(1.0, 1.0, 1.0)) * material.emittance;
 
-				switch(material.type) {
-					case MATERIAL_TYPE_SPECULAR: {
-						update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
-
-						sampling_probability = 1.0;
-						BSDF = vec3(1.0);
-
-						next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
-					} break;
-					case MATERIAL_TYPE_DIELECTRIC: {
-						update_next_ray_dielectric(ray, next_ray, material, mat_index, normal, t);
-
-						sampling_probability = 1.0;
-						BSDF = material.albedo;
-
-						next_ray.attenuation *= (BSDF / sampling_probability) * dot(ray.d, ray.n);
-					} break;
+					ray_invalidate(ray);
+					break;
 				}
 
-				ray = next_ray;
+				update_ray(ray, material, mat_index, normal, t);
 			}
 			else {
 				vec3 background_color = vec3(0.0, 0.0, 0.0);
