@@ -442,7 +442,8 @@ struct Scene {
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // Green
 		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.5f}, 0.95f,  MATERIAL_TYPE_BLACKBODY));  // Light
 		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.005f, MATERIAL_TYPE_SPECULAR));   // Mirror
-		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 1.4f,   MATERIAL_TYPE_DIELECTRIC)); // Glass
+		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 1.4f,   MATERIAL_TYPE_DIELECTRIC)); // Cube Glass
+		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 2.4f,   MATERIAL_TYPE_DIELECTRIC)); // Sphere Glass
 
 		place_light(triangles, 4);
 		place_back_wall(triangles, 1);
@@ -450,10 +451,10 @@ struct Scene {
 		place_right_wall(triangles, 3);
 		place_floor(triangles, 1);
 		place_ceiling(triangles, 1);
-		place_short_block(triangles, 6);
-		place_tall_block(triangles, 6);
+		// place_short_block(triangles, 6);
+		// place_tall_block(triangles, 1);
 
-		//spheres.push_back(Sphere({200, 130, -200}, 100.0f, 6));
+		spheres.push_back(Sphere({200, 100, -200}, 100.0f, 7));
 
 		return Scene(spheres, triangles, materials);
 	}
@@ -654,10 +655,10 @@ struct Tracer {
 			
 			glUniform1ui(glGetUniformLocation(program, "processed_ray_count"), ray_index + 1);
 		
-			glUniform1f(time_uniform_location, (f32)Time::now());
 			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
 		
 			for(u32 batch_index = 0; batch_index < batch_count; ++batch_index) {
+				glUniform1f(time_uniform_location, (f32)Time::now());
 				dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_TRACE);
 				jumps_done += batch_jump_count;
 			}

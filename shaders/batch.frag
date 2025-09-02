@@ -309,8 +309,8 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 		vec3 P = cross(ray.d, E2);
 		float det = dot(P, E1);
 
-		// Hit on front side.
-		if(det >= BIAS) {
+		// Hit on the front side of any triangle, or on the back side of the dielectric.
+		if(det >= BIAS || (det <= -BIAS && materials[triangles[i].mat_index].type == MATERIAL_TYPE_DIELECTRIC)) {
 			float inv_det = 1.0/det;
 			vec3 T = ray.p - triangles[i].p1;
 
@@ -331,20 +331,17 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 				}
 			}
 		}
-		// Hit on back side.
-		else if(det <= - BIAS) {
-
-		}
 	}
 }
 
 // TODO(stekap): Schlick's approximation if needed.
-void refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
+void refract_ray(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
 	float refraction_ratio = ray.ior / material.scatter_or_ior;
 	bool inside = dot(ray.d, normal) > 0;
 
 	if(inside) {
 		refraction_ratio = ray.ior;
+		normal = -normal;
 	}
 
 	float cos_i = -dot(ray.d, normal);
@@ -359,10 +356,14 @@ void refract(in Ray ray, inout Ray next_ray, in Material material, in vec3 norma
 	bool reflection = random_0_to_1(next_ray.p, time) < reflection_probability;
 
 	if(inside) {
+		normal = -normal;
+	}
+
+	if(inside) {
 		// Total internal reflection.
 		if(sin_t_sq > 1) {
 			next_ray.p -= BIAS*normal;
-			next_ray.d = normalize(refracted_dir - BIAS*normal);
+			next_ray.d = reflect(ray.d, -normal);
 			next_ray.ior = material.scatter_or_ior;
 			next_ray.n = -normal;
 		}
@@ -429,14 +430,27 @@ void update_next_ray_diffuse_and_specular(in Ray ray, inout Ray next_ray, in Mat
 	next_ray.origin_material = mat_index;
 }
 
+// TODO(stekap): For dielectric object, while we are inside of it, we don't need to waste time on iteration through all objects to figure
+//               out which one we will hit, since we it must be that same object. Therefore, we can save some time by bouncing the ray inside,
+//               until it exits the object.
 void update_next_ray_dielectric(in Ray ray, inout Ray next_ray, in Material material, in unsigned int mat_index, vec3 normal, in float t) {
 	next_ray.p = ray.p + t*ray.d;
 
-	refract(ray, next_ray, material, normal);
+	refract_ray(ray, next_ray, material, normal);
 
 	next_ray.color = ray.color;
 	next_ray.attenuation = ray.attenuation;
 	next_ray.origin_material = mat_index;
+}
+
+// TODO(stekap): This is just temporary intersection. Later, it must be optimized with BVH.
+void intersect_objects(in Ray ray, inout int triangle_index, inout int sphere_index, inout float t) {
+	intersect_triangles(ray, triangle_index, t);
+	float t_temp = t;
+	intersect_spheres(ray, sphere_index, t);
+	if(t < t_temp) {
+		triangle_index = -1;
+	}
 }
 
 // TODO(stekap):
@@ -448,9 +462,10 @@ void update_next_ray_dielectric(in Ray ray, inout Ray next_ray, in Material mate
 // TODO(stekap): Direct light sampling is hardcoded for now. Change this after deciding on how the lights should be
 //               organized in memory.
 
-void direct_light_sample_triangle(inout Ray next_ray) {
+void direct_light_sample(inout Ray next_ray) {
 	float t = MAX_FLOAT;
 	int triangle_index = -1;
+	int sphere_index = -1;
 	
 	Ray light_ray = next_ray;
 
@@ -460,7 +475,7 @@ void direct_light_sample_triangle(inout Ray next_ray) {
 	//               when multiple lights are included.
 	light_ray.d = normalize(light_dir + 50*random_unit_vector_in_hemisphere(light_ray.p, time, vec3(0.0, 1.0, 0.0)));
 
-	intersect_triangles(light_ray, triangle_index, t);
+	intersect_objects(light_ray, triangle_index, sphere_index, t);
 
 	// Direct light sampling uses the area form of the integral in the rendering equation. This is why we don't just
 	// have scaling with one cosine term, but with two plus with the inverse of distance squared.
@@ -475,11 +490,12 @@ void direct_light_sample_triangle(inout Ray next_ray) {
 	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
 }
 
-void direct_light_sample_triangle_with_dielectric_handling(inout Ray next_ray) {
+void direct_light_sample_with_dielectric_handling(inout Ray next_ray) {
 	// NOTE(stekap): This is a testing code for whether direct light samplng needs special treatment when there are dielectrics in the scene.
 
 	float t = MAX_FLOAT;
 	int triangle_index = -1;
+	int sphere_index = -1;
 
 	Ray light_ray = next_ray;
 
@@ -497,7 +513,8 @@ void direct_light_sample_triangle_with_dielectric_handling(inout Ray next_ray) {
 
 	for(unsigned int i = 0; i < 8; ++i) {
 		triangle_index = -1;
-		intersect_triangles(light_ray, triangle_index, t);
+		sphere_index = -1;
+		intersect_objects(light_ray, triangle_index, sphere_index, t);
 
 		if(triangle_index < 0) {
 			break;
@@ -595,12 +612,7 @@ void main() {
 			int triangle_index = -1;
 			int sphere_index = -1;
 
-			intersect_triangles(ray, triangle_index, t);
-			float t_temp = t;
-			intersect_spheres(ray, sphere_index, t);
-			if(t < t_temp) {
-				triangle_index = -1;
-			}
+			intersect_objects(ray, triangle_index, sphere_index, t);
 
 			if(triangle_index >= 0) {
 				Triangle triangle = triangles[triangle_index];
@@ -636,7 +648,7 @@ void main() {
 
 						next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
 
-						direct_light_sample_triangle(next_ray);
+						direct_light_sample(next_ray);
 					} break;
 					case MATERIAL_TYPE_SPECULAR: {
 						update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
@@ -671,13 +683,21 @@ void main() {
 				vec3 BSDF;
 
 				switch(material.type) {
+					case MATERIAL_TYPE_SPECULAR: {
+						update_next_ray_diffuse_and_specular(ray, next_ray, material, mat_index, normal, t);
+
+						sampling_probability = 1.0;
+						BSDF = vec3(1.0);
+
+						next_ray.attenuation *= material.albedo * (BSDF / sampling_probability) * dot(ray.d, ray.n);
+					} break;
 					case MATERIAL_TYPE_DIELECTRIC: {
 						update_next_ray_dielectric(ray, next_ray, material, mat_index, normal, t);
 
 						sampling_probability = 1.0;
 						BSDF = material.albedo;
 
-						next_ray.attenuation *= (BSDF / sampling_probability * dot(ray.d, ray.n));
+						next_ray.attenuation *= (BSDF / sampling_probability) * dot(ray.d, ray.n);
 					} break;
 				}
 
