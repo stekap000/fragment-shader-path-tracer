@@ -335,6 +335,7 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 }
 
 // TODO(stekap): Schlick's approximation if needed.
+// TODO(stekap): Refraction area change (as a result of Snell's law) inclusion via Jacobian.
 void refract_ray(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
 	float refraction_ratio = ray.ior / material.scatter_or_ior;
 	bool inside = dot(ray.d, normal) > 0;
@@ -346,7 +347,9 @@ void refract_ray(in Ray ray, inout Ray next_ray, in Material material, in vec3 n
 
 	float cos_i = -dot(ray.d, normal);
 	float sin_t_sq = refraction_ratio*refraction_ratio*(1.0 - cos_i*cos_i);
-	float cos_t = sqrt(1 - sin_t_sq);
+	float under_root = 1 - sin_t_sq;
+
+	float cos_t = sqrt(max(under_root, 0));
 	vec3 refracted_dir = normalize(refraction_ratio*ray.d + (refraction_ratio*cos_i - cos_t)*normal);
 
 	float R_p = pow((refraction_ratio*cos_i - cos_t)/(refraction_ratio*cos_i + cos_t), 2);
@@ -361,7 +364,7 @@ void refract_ray(in Ray ray, inout Ray next_ray, in Material material, in vec3 n
 
 	if(inside) {
 		// Total internal reflection.
-		if(sin_t_sq > 1) {
+		if(sin_t_sq > 1.0) {
 			next_ray.p -= BIAS*normal;
 			next_ray.d = reflect(ray.d, -normal);
 			next_ray.ior = material.scatter_or_ior;
@@ -379,6 +382,7 @@ void refract_ray(in Ray ray, inout Ray next_ray, in Material material, in vec3 n
 				next_ray.d = refracted_dir;
 				next_ray.ior = 1.0;
 				next_ray.n = normal;
+				next_ray.attenuation /= cos_t;
 			}
 		}
 	}
@@ -394,6 +398,7 @@ void refract_ray(in Ray ray, inout Ray next_ray, in Material material, in vec3 n
 			next_ray.d = refracted_dir;
 			next_ray.ior = material.scatter_or_ior;
 			next_ray.n = -normal;
+			next_ray.attenuation /= cos_t;
 		}
 	}
 }
@@ -412,6 +417,11 @@ void refract_ray(in Ray ray, inout Ray next_ray, in Material material, in vec3 n
 
 void update_next_ray_diffuse_and_specular(in Ray ray, inout Ray next_ray, in Material material, in unsigned int mat_index, in vec3 normal, in float t) {
 	next_ray.p = ray.p + t*ray.d;
+	next_ray.n = normal;
+	next_ray.ior = ray.ior;
+	next_ray.color = ray.color;
+	next_ray.attenuation = ray.attenuation;
+	next_ray.origin_material = mat_index;
 
 	if(dot(ray.d, normal) < 0) {
 		next_ray.p += BIAS*normal;
@@ -423,11 +433,6 @@ void update_next_ray_diffuse_and_specular(in Ray ray, inout Ray next_ray, in Mat
 	next_ray.d = normalize(mix(reflect(ray.d, normal),
 							   random_unit_vector_in_hemisphere(next_ray.p, time, normal),
 							   material.scatter_or_ior));
-	next_ray.n = normal;
-	next_ray.ior = ray.ior;
-	next_ray.color = ray.color;
-	next_ray.attenuation = ray.attenuation;
-	next_ray.origin_material = mat_index;
 }
 
 // TODO(stekap): For dielectric object, while we are inside of it, we don't need to waste time on iteration through all objects to figure
@@ -435,12 +440,11 @@ void update_next_ray_diffuse_and_specular(in Ray ray, inout Ray next_ray, in Mat
 //               until it exits the object.
 void update_next_ray_dielectric(in Ray ray, inout Ray next_ray, in Material material, in unsigned int mat_index, vec3 normal, in float t) {
 	next_ray.p = ray.p + t*ray.d;
-
-	refract_ray(ray, next_ray, material, normal);
-
 	next_ray.color = ray.color;
 	next_ray.attenuation = ray.attenuation;
 	next_ray.origin_material = mat_index;
+
+	refract_ray(ray, next_ray, material, normal);
 }
 
 // TODO(stekap): This is just temporary intersection. Later, it must be optimized with BVH.
