@@ -102,6 +102,9 @@ uniform unsigned int triangle_count;
 
 uniform Camera camera;
 
+uniform unsigned int triangle_light_count;
+uniform unsigned int sphere_light_count;
+
 // width * height * sizeof(Ray)
 // Ray coordinates for the current fragment is defined by fragment coords.
 // Every ray takes 5 float vec4 (for now).
@@ -335,7 +338,7 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 }
 
 // TODO(stekap): Schlick's approximation if needed.
-// TODO(stekap): Refraction area change (as a result of Snell's law) inclusion via Jacobian.
+// TODO(stekap): Look again carefully at Jacobian refraction term scaling.
 void refract_ray(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
 	float refraction_ratio = ray.ior / material.scatter_or_ior;
 	bool inside = dot(ray.d, normal) > 0;
@@ -495,7 +498,7 @@ void direct_light_sample(inout Ray next_ray) {
 
 bool update_ray(inout Ray ray, in Material material, in unsigned int mat_index, in vec3 normal, in float t) {
 	if(material.type == MATERIAL_TYPE_BLACKBODY) {
-		ray.color += ray.attenuation * material.emittance;
+		ray.color += ray.attenuation * dot(ray.d, ray.n) * material.emittance;
 		return true;
 	}
 

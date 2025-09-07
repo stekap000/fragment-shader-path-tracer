@@ -367,8 +367,8 @@ struct Camera {
 
 namespace ShaderConfig {
 	Internal constexpr u32 max_sphere_count        = 32;
-	Internal constexpr u32 max_material_count      = 32;
 	Internal constexpr u32 max_triangle_count      = 64;
+	Internal constexpr u32 max_material_count      = 32;
 
 	Internal constexpr u32 spheres_ub_bind_index   = 0;
 	Internal constexpr u32 triangles_ub_bind_index = 1;
@@ -385,26 +385,35 @@ struct Scene {
 	std::vector<Triangle> triangles;
 	std::vector<Material> materials;
 
+	u32 triangle_light_count;
+	u32 sphere_light_count;
+
 	Scene() {}
-	
-	Scene(u32 sphere_count, u32 triangle_count, u32 material_count) {
+
+	Scene(u32 sphere_count, u32 sphere_light_count, u32 triangle_count, u32 triangle_light_count, u32 material_count) {
 		assert(sphere_count   <= ShaderConfig::max_sphere_count);
 		assert(triangle_count <= ShaderConfig::max_triangle_count);
 		assert(material_count <= ShaderConfig::max_material_count);
+		assert(triangle_light_count <= ShaderConfig::max_triangle_count);
+		assert(sphere_light_count <= ShaderConfig::max_sphere_count);
 		
 		spheres.resize(sphere_count);
 		triangles.resize(triangle_count);
 		materials.resize(material_count);
 	}
 
-	Scene(std::vector<Sphere>& spheres, std::vector<Triangle>& triangles, std::vector<Material>& materials) {
+	Scene(std::vector<Sphere>& spheres, u32 sphere_light_count, std::vector<Triangle>& triangles, u32 triangle_light_count, std::vector<Material>& materials) {
 		assert(spheres.size()   <= ShaderConfig::max_sphere_count);
 		assert(triangles.size() <= ShaderConfig::max_triangle_count);
 		assert(materials.size() <= ShaderConfig::max_material_count);
+		assert(triangle_light_count <= ShaderConfig::max_triangle_count);
+		assert(sphere_light_count <= ShaderConfig::max_sphere_count);
 
 		this->spheres = spheres;
 		this->triangles = triangles;
 		this->materials = materials;
+		this->triangle_light_count = triangle_light_count;
+		this->sphere_light_count = sphere_light_count;
 	}
 
 	static Scene test_scene() {
@@ -428,7 +437,7 @@ struct Scene {
 			Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f},  0.9f,   MATERIAL_TYPE_BLACKBODY),
 		};
 		
-		return Scene(spheres, triangles, material);
+		return Scene(spheres, 1, triangles, 1, material);
 	}
 
 	static Scene cornell_box() {
@@ -436,33 +445,40 @@ struct Scene {
 		std::vector<Triangle> triangles;
 		std::vector<Material> materials;
 
-		materials.push_back(Material({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f,   MATERIAL_TYPE_NONE));       // Default material
-		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // White
+		materials.push_back(Material({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f,   MATERIAL_TYPE_NONE));    // Default material
+		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE)); // White
+
 		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // Red
 		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // Green
+
+		// materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.005f,  MATERIAL_TYPE_SPECULAR));
+		// materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.005f,  MATERIAL_TYPE_SPECULAR));
+
 		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.5f}, 0.95f,  MATERIAL_TYPE_BLACKBODY));  // Light
 		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.005f, MATERIAL_TYPE_SPECULAR));   // Mirror
 		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 1.4f,   MATERIAL_TYPE_DIELECTRIC)); // Cube Glass
-		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 2.4f,   MATERIAL_TYPE_DIELECTRIC)); // Sphere Glass
+		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 1.8f,   MATERIAL_TYPE_DIELECTRIC)); // Sphere Glass
 
 		place_light(triangles, 4);
+
 		place_back_wall(triangles, 1);
 		place_left_wall(triangles, 2);
 		place_right_wall(triangles, 3);
 		place_floor(triangles, 1);
 		place_ceiling(triangles, 1);
-		// place_short_block(triangles, 6);
-		// place_tall_block(triangles, 1);
+		place_short_block(triangles, 1);
+		place_tall_block(triangles, 1);
 
-		spheres.push_back(Sphere({200, 100, -200}, 100.0f, 7));
+		// spheres.push_back(Sphere({200, 101, -200}, 100.0f, 7));
+		// spheres.push_back(Sphere({430, 71, -100}, 70.0f, 7));
 
-		return Scene(spheres, triangles, materials);
+		return Scene(spheres, 0, triangles, 2, materials);
 	}
 
 	private : static void place_light(std::vector<Triangle>& triangles, int material_index) {
 		// Light
 		triangles.push_back(Triangle({343.0f, 548.799f, -227.0f}, {213.0f, 548.799f, -227.2f}, {343.0f, 548.799f, -332.0f}, material_index));
-		triangles.push_back(Triangle({213.0f, 548.799f, -227.2f}, {213.0f, 548.799f, -332.0f} , {343.0f, 548.799f, -332.0f}, material_index));
+		triangles.push_back(Triangle({213.0f, 548.799f, -227.2f}, {213.0f, 548.799f, -332.0f}, {343.0f, 548.799f, -332.0f}, material_index));
 	}
 
 	private : static void place_back_wall(std::vector<Triangle>& triangles, int material_index) {
@@ -496,7 +512,7 @@ struct Scene {
 	}
 
 	private : static void place_short_block(std::vector<Triangle>& triangles, int material_index, V3 translation_vector = {0, 0, 0}) {
-		int old_triangle_count = (int)triangles.size();
+		size_t old_triangle_count = triangles.size();
 
 		// Short block
 		// Top
@@ -520,16 +536,16 @@ struct Scene {
 		triangles.push_back(Triangle({316.0f, 0.0f, -272.0f}, {474.0f, 165.0f, -225.0f}, {474.0f, 0.0f, -225.0f}, material_index));
 
 		// Bottom
-		// triangles.push_back(Triangle({426.0f, 0.1f, -65.0f}, {316.0f, 0.1f, -272.0f}, {474.0f, 0.1f, -225.0f}, material_index));
-		// triangles.push_back(Triangle({266.0f, 0.1f, -114.0f}, {316.0f, 0.1f, -272.0f}, {426.0f, 0.1f, -65.0f}, material_index));
+		// triangles.push_back(Triangle({426.0f, 0.0f, -65.0f}, {316.0f, 0.0f, -272.0f}, {474.0f, 0.0f, -225.0f}, material_index));
+		// triangles.push_back(Triangle({266.0f, 0.0f, -114.0f}, {316.0f, 0.0f, -272.0f}, {426.0f, 0.0f, -65.0f}, material_index));
 
-		for(int i = old_triangle_count; i < old_triangle_count + 10; ++i) {
+		for(size_t i = old_triangle_count; i < old_triangle_count + (triangles.size() - old_triangle_count); ++i) {
 			triangles[i].translate(translation_vector);
 		}
 	}
 
 	private : static void place_tall_block(std::vector<Triangle>& triangles, int material_index, V3 translation_vector = {0, 0, 0}) {
-		int old_triangle_count = (int)triangles.size();
+		size_t old_triangle_count = triangles.size();
 
 		// Tall block
 		// Top
@@ -553,10 +569,10 @@ struct Scene {
 		triangles.push_back(Triangle({84.0f, 0.0f, -406.0f}, {242.0f, 330.0f, -456.0f}, {242.0f, 0.0f, -456.0f}, material_index));
 
 		// Bottom
-		// triangles.push_back(Triangle({133.0f, 0.1f, -247.0f}, {242.0f, 0.1f, -456.0f}, {291.0f, 0.1f, -296.0f}, material_index));
-		// triangles.push_back(Triangle({133.0f, 0.1f, -247.0f}, {84.0f, 0.1f, -406.0f}, {242.0f, 0.1f, -456.0f}, material_index));
+		// triangles.push_back(Triangle({133.0f, 0.0f, -247.0f}, {242.0f, 0.0f, -456.0f}, {291.0f, 0.0f, -296.0f}, material_index));
+		// triangles.push_back(Triangle({133.0f, 0.0f, -247.0f}, {84.0f, 0.0f, -406.0f}, {242.0f, 0.0f, -456.0f}, material_index));
 
-		for(int i = old_triangle_count; i < old_triangle_count + 10; ++i) {
+		for(size_t i = old_triangle_count; i < old_triangle_count + (triangles.size() - old_triangle_count); ++i) {
 			triangles[i].translate(translation_vector);
 		}
 	}
@@ -618,6 +634,8 @@ struct Tracer {
 		glUniform1f(glGetUniformLocation(program, "height"), (f32)height);
 		glUniform1ui(glGetUniformLocation(program, "sphere_count"), (u32)scene.spheres.size());
 		glUniform1ui(glGetUniformLocation(program, "triangle_count"), (u32)scene.triangles.size());
+		glUniform1ui(glGetUniformLocation(program, "triangle_light_count"), (u32)scene.triangle_light_count);
+		glUniform1ui(glGetUniformLocation(program, "sphere_light_count"), (u32)scene.sphere_light_count);
 	}
 
 	Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
@@ -727,6 +745,8 @@ struct Tracer {
 	}
 };
 
+// TODO(stekap): Find out why is there a dark edge around the glass sphere.
+// TODO(stekap): Check if next_ray is even needed, or it is enough to just use ray.
 int main(int arg_count, char** args) {
 	// False in window creating means that it will be hidden i.e. we will only have console output during generation.
 	GLFWwindow* window = Window::create(400, 400, true);
@@ -741,8 +761,8 @@ int main(int arg_count, char** args) {
 	Camera camera = Camera::cornell_box();
 	
 	u32 ray_count        = 512;
-	u32 ray_jump_count   = 128;
-	u32 batch_jump_count = 128;
+	u32 ray_jump_count   = 32;
+	u32 batch_jump_count = 32;
 
 	u32 program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
 
