@@ -461,6 +461,9 @@ struct Scene {
 
 		place_light(triangles, 4);
 
+		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {0.0f, 50.0f, -50.0f}, {0.0f, 50.0f, 0.0f}, 4));
+		triangles.push_back(Triangle({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -50.0f}, {0.0f, 50.0f, -50.0f}, 4));
+
 		place_back_wall(triangles, 1);
 		place_left_wall(triangles, 2);
 		place_right_wall(triangles, 3);
@@ -472,7 +475,7 @@ struct Scene {
 		// spheres.push_back(Sphere({200, 101, -200}, 100.0f, 7));
 		// spheres.push_back(Sphere({430, 71, -100}, 70.0f, 7));
 
-		return Scene(spheres, 0, triangles, 2, materials);
+		return Scene(spheres, 0, triangles, 4, materials);
 	}
 
 	private : static void place_light(std::vector<Triangle>& triangles, int material_index) {
@@ -576,6 +579,33 @@ struct Scene {
 			triangles[i].translate(translation_vector);
 		}
 	}
+};
+
+namespace BVH {
+	struct AABB {
+		f32 min[3];
+		f32 max[3];
+
+		float half_area() {
+			float edges[] = {max[0] - min[0],max[1] - min[1], max[2] - min[2]};
+			return edges[0] * (edges[1] + edges[2]) + edges[1] * edges[2];
+		}
+
+		static AABB unionize(AABB box1, AABB box2) {
+			return AABB({std::min(box1.min[0], box2.min[0]), std::min(box1.min[1], box2.min[1]), std::min(box1.min[2], box2.min[2])},
+						{std::max(box1.max[0], box2.max[0]), std::max(box1.max[1], box2.max[1]), std::max(box1.max[2], box2.max[2])});
+		}
+
+		void print() {
+			std::cout << "{[" << min[0] << " " << min[1] << " " << min[2] << "], "
+					  << "[" << max[0] << " " << max[1] << " " << max[2] << "]}";
+		}
+
+		void println() {
+			print();
+			std::cout << std::endl;
+		}
+	};
 };
 
 struct Tracer {
@@ -748,6 +778,14 @@ struct Tracer {
 // TODO(stekap): Find out why is there a dark edge around the glass sphere.
 // TODO(stekap): Check if next_ray is even needed, or it is enough to just use ray.
 int main(int arg_count, char** args) {
+	BVH::AABB test1({1, 2, 3}, {4, 5, 6});
+	test1.println();
+	BVH::AABB test2({-2, -1, 3}, {4, 0, 4});
+	test2.println();
+	BVH::AABB::unionize(test1, test2).println();
+
+	return 0;
+
 	// False in window creating means that it will be hidden i.e. we will only have console output during generation.
 	GLFWwindow* window = Window::create(400, 400, true);
 
