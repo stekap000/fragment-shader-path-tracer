@@ -582,6 +582,63 @@ struct Scene {
 };
 
 namespace BVH {
+	namespace Morton {
+		// uint64_t split(uint64_t x, int log_bits) {
+		// 	const int bit_count = 1 << log_bits;
+		// 	uint64_t mask = ((uint64_t)-1) >> (bit_count / 2);
+		// 	x &= mask;
+		// 	for (int i = log_bits - 1, n = 1 << i; i > 0; --i, n >>= 1) {
+		// 		mask = (mask | (mask << n)) & ~(mask << (n / 2));
+		// 		x = (x | (x << n)) & mask;
+		// 	}
+		// 	return x;
+		// }
+
+		u64 split(u64 x, int log_bits) {
+			u64 mask = ((u64)(1 << (1 << log_bits)) - 1);
+			x &= mask;
+
+			for(int i = log_bits, n = 1 << i; i > 0; --i, n >>= 1) {
+				mask = (mask | (mask << n)) & ~(mask << (n / 2));
+				x = (x | (x << n)) & mask;
+			}
+
+			return x;
+
+			// x = abcd
+			// log_bits = 2
+			// bit_count = 4
+			// result = 00a00b00c00d
+
+			// abcd -> 00ab0000cd -> 00a00b00c00d
+
+
+
+			// 0000111100
+			// 0011110000
+			// 0000abcd -> abcdabcd -> ab0000cd
+			// 00ab0000cd -> abab00cdcd -> a00b00c00d
+			//
+			// abab00cdcd
+			// 1111000011
+			// 1100001100
+			// 1111001111
+			// 0011110011
+			// 0011000011
+			// 00ab0000cd
+			// ab0000cd00
+			//
+			// 0000111100
+			// 1111111100
+			// 0011110000
+			// 00a0000d00
+		}
+
+		u64 encode(u64 x, u64 y, u64 z, int log_bits) {
+			return split(x, log_bits) | (split(y, log_bits) << 1) | (split(z, log_bits) << 2);
+		}
+	};
+
 	struct AABB {
 		f32 min[3];
 		f32 max[3];
@@ -778,11 +835,10 @@ struct Tracer {
 // TODO(stekap): Find out why is there a dark edge around the glass sphere.
 // TODO(stekap): Check if next_ray is even needed, or it is enough to just use ray.
 int main(int arg_count, char** args) {
-	BVH::AABB test1({1, 2, 3}, {4, 5, 6});
-	test1.println();
-	BVH::AABB test2({-2, -1, 3}, {4, 0, 4});
-	test2.println();
-	BVH::AABB::unionize(test1, test2).println();
+	u64 x = 0b0110;
+	u64 y = 0b1010;
+	u64 z = 0b0010;
+	std::cout << BVH::Morton::encode(x, y, z, 2);
 
 	return 0;
 
