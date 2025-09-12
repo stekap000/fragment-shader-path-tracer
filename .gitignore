@@ -2,7 +2,6 @@
 *.exe
 *#*
 *.ilk
-*.obj
 *.pdb
 *.rdi
 *.cache*
