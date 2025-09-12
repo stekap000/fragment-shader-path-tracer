@@ -14,6 +14,9 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
 
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "tiny_obj_loader.h"
+
 #define __ignore__(x)((void)(x))
 #define Internal static
 
@@ -29,6 +32,118 @@ typedef double                 f64;
 //               glfwGetWindowSize in order to retrieve them from window.
 Internal int width  = 800;
 Internal int height = 800;
+
+struct V3 {
+	f32 x, y, z;
+	V3& operator += (const V3& v) {
+		x += v.x;
+		y += v.y;
+		z += v.z;
+		return *this;
+	}
+};
+struct V4 { f32 x, y, z, w; };
+
+// TODO(stekap): Maybe metaprogram part of the shader source, so that we can define things only once on the host
+//               and have them in proper form in the shader (for example shared types and some constants like
+//               max_triangle_count).
+
+// NOTE(stekap): For types like Material that are shared between this code and shader code,
+//               constructor parameters order represents more logical attribute order, but
+//               the actual order differs from that in order to be more nicely packed for
+//               shader.
+
+// TODO(stekap): If needed, types that are shared with the shader should be packed better
+//               (when their attributes and value ranges become more apparent).
+
+enum : u32 {
+	MATERIAL_TYPE_NONE       = 0,
+	MATERIAL_TYPE_BLACKBODY  = 1,
+	MATERIAL_TYPE_DIFFUSE    = 2,
+	MATERIAL_TYPE_SPECULAR   = 3,
+	MATERIAL_TYPE_DIELECTRIC = 4,
+};
+
+struct Material {
+	V3 albedo;
+	f32 scatter_or_ior;
+	V3 emittance;
+	// TODO(stekap): Currently, flags is more for testing. Maybe remove, maybe expand.
+	u32 type;
+
+	Material() {}
+	Material(V3 albedo, V3 emittance, f32 scatter_or_ior, u32 type)
+		: albedo(albedo), emittance(emittance), scatter_or_ior(scatter_or_ior), type(type) {}
+};
+
+struct Sphere {
+	V3 p;
+	f32 r;
+	u32 mat_index;
+	f32 SHADER_PAD[3];
+
+	Sphere() {}
+	Sphere(V3 p, f32 r, u32 mat_index) : p(p), r(r), mat_index(mat_index) {}
+};
+
+// TODO(stekap): Assume one normal per triangle for now. Later expand to per-vertex normals.
+//               Also, texture coords should later be included.
+// TODO(stekap): Probably store vertex array separately and have triangle struct hold indices
+//               into such array.
+struct Triangle {
+	V3 p1;
+	u32 mat_index;
+	V3 p2;
+	f32 SHADER_PAD0;
+	V3 p3;
+	f32 SHADER_PAD1;
+
+	Triangle() {}
+	Triangle(V3 p1, V3 p2, V3 p3, u32 mat_index)
+		: p1(p1), p2(p2), p3(p3), mat_index(mat_index) {}
+
+	inline void translate(V3& translation_vector) {
+		p1 += translation_vector;
+		p2 += translation_vector;
+		p3 += translation_vector;
+	}
+
+	void print() {
+		std::cout << "T{[";
+		std::cout << p1.x << " " << p1.y << " " << p1.z << "],";
+		std::cout << p2.x << " " << p2.y << " " << p2.z << "],";
+		std::cout << p3.x << " " << p3.y << " " << p3.z << "]}";
+	}
+
+	void println() {
+		print();
+		std::cout << std::endl;
+	}
+};
+
+struct Camera {
+	V3 p, x, y, z;
+	float f;
+
+	Camera() {}
+	Camera(V3 p, V3 x, V3 y, V3 z, float f) : p(p), x(x), y(y), z(z), f(f) {}
+
+	static Camera test_scene() {
+		return Camera({0.0f, 1.0f, 1.0f},
+					  {1.0f, 0.0f, 0.0f},
+					  {0.0f, 1.0f, 0.0f},
+					  {0.0f, 0.0f, 1.0f},
+					  1.0f);
+	}
+
+	static Camera cornell_box() {
+		return Camera({278.0f, 274.0f, 600.0f},
+					  {1.0f, 0.0f, 0.0f},
+					  {0.0f, 1.0f, 0.0f},
+					  {0.0f, 0.0f, 1.0f},
+					  2.2f);
+	}
+};
 
 namespace Time {
 	struct Standard {
@@ -151,6 +266,62 @@ namespace IO {
 		stbi_flip_vertically_on_write(true);
 		stbi_write_png(image_name.c_str(), width, height, 4, pixels.data(), 4*width);
 	}
+
+	static std::vector<Triangle> load_obj(std::string filename) {
+		tinyobj::ObjReader reader;
+		tinyobj::ObjReaderConfig reader_config;
+		// Explicit setting to true even though that is the default value.
+		reader_config.triangulate = true;
+
+		if(!reader.ParseFromFile(filename, reader_config)) {
+			if(!reader.Error().empty()) {
+				std::cerr << "TinyObjReader: " << reader.Error() << std::endl;
+			}
+		}
+
+		if(!reader.Warning().empty()) {
+			std::cout << "TinyObjReader: " << reader.Warning() << std::endl;
+		}
+
+		auto& attrib = reader.GetAttrib();
+		auto& shapes = reader.GetShapes();
+
+		size_t triangle_count = 0;
+		for(const tinyobj::shape_t& shape : shapes) {
+			triangle_count += shape.mesh.indices.size() / 3;
+		}
+
+		std::vector<Triangle> triangles(triangle_count);
+		size_t triangle_index = 0;
+
+		tinyobj::index_t index_0;
+		tinyobj::index_t index_1;
+		tinyobj::index_t index_2;
+		for(const tinyobj::shape_t& shape : shapes) {
+			for(size_t i = 0; i < shape.mesh.indices.size(); i += 3) {
+				index_0 = shape.mesh.indices[i + 0];
+				index_1 = shape.mesh.indices[i + 1];
+				index_2 = shape.mesh.indices[i + 2];
+
+				// First vertex coords.
+				triangles[triangle_index].p1 = V3(attrib.vertices[3 * index_0.vertex_index + 0],
+												  attrib.vertices[3 * index_0.vertex_index + 1],
+												  attrib.vertices[3 * index_0.vertex_index + 2]);
+				// Second vertex coords.
+				triangles[triangle_index].p2 = V3(attrib.vertices[3 * index_1.vertex_index + 0],
+												  attrib.vertices[3 * index_1.vertex_index + 1],
+												  attrib.vertices[3 * index_1.vertex_index + 2]);
+				// Third vertex coords.
+				triangles[triangle_index].p3 = V3(attrib.vertices[3 * index_2.vertex_index + 0],
+												  attrib.vertices[3 * index_2.vertex_index + 1],
+												  attrib.vertices[3 * index_2.vertex_index + 2]);
+
+				++triangle_index;
+			}
+		}
+
+		return triangles;
+	}
 };
 
 namespace OpenGL {
@@ -262,106 +433,6 @@ namespace OpenGL {
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, image_width, image_height, 0, GL_RGBA, GL_FLOAT, NULL);
 		glBindImageTexture(image_bind_index, tex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 		return tex;
-	}
-};
-
-struct V3 {
-	f32 x, y, z;
-	V3& operator += (const V3& v) {
-		x += v.x;
-		y += v.y;
-		z += v.z;
-		return *this;
-	}
-};
-struct V4 { f32 x, y, z, w; };
-
-// TODO(stekap): Maybe metaprogram part of the shader source, so that we can define things only once on the host
-//               and have them in proper form in the shader (for example shared types and some constants like
-//               max_triangle_count).
-
-// NOTE(stekap): For types like Material that are shared between this code and shader code,
-//               constructor parameters order represents more logical attribute order, but
-//               the actual order differs from that in order to be more nicely packed for
-//               shader.
-
-// TODO(stekap): If needed, types that are shared with the shader should be packed better
-//               (when their attributes and value ranges become more apparent).
-
-enum : u32 {
-	MATERIAL_TYPE_NONE       = 0,
-	MATERIAL_TYPE_BLACKBODY  = 1,
-	MATERIAL_TYPE_DIFFUSE    = 2,
-	MATERIAL_TYPE_SPECULAR   = 3,
-	MATERIAL_TYPE_DIELECTRIC = 4,
-};
-
-struct Material {
-	V3 albedo;
-	f32 scatter_or_ior;
-	V3 emittance;
-	// TODO(stekap): Currently, flags is more for testing. Maybe remove, maybe expand.
-	u32 type;
-
-	Material() {}
-	Material(V3 albedo, V3 emittance, f32 scatter_or_ior, u32 type)
-		: albedo(albedo), emittance(emittance), scatter_or_ior(scatter_or_ior), type(type) {}
-};
-
-struct Sphere {
-	V3 p;
-	f32 r;
-	u32 mat_index;
-	f32 SHADER_PAD[3];
-
-	Sphere() {}
-	Sphere(V3 p, f32 r, u32 mat_index) : p(p), r(r), mat_index(mat_index) {}
-};
-
-// TODO(stekap): Assume one normal per triangle for now. Later expand to per-vertex normals.
-//               Also, texture coords should later be included.
-// TODO(stekap): Probably store vertex array separately and have triangle struct hold indices
-//               into such array.
-struct Triangle {
-	V3 p1;
-	u32 mat_index;
-	V3 p2;
-	f32 SHADER_PAD0;
-	V3 p3;
-	f32 SHADER_PAD1;
-
-	Triangle() {}
-	Triangle(V3 p1, V3 p2, V3 p3, u32 mat_index)
-		: p1(p1), p2(p2), p3(p3), mat_index(mat_index) {}
-
-	inline void translate(V3& translation_vector) {
-		p1 += translation_vector;
-		p2 += translation_vector;
-		p3 += translation_vector;
-	}
-};
-
-struct Camera {
-	V3 p, x, y, z;
-	float f;
-
-	Camera() {}
-	Camera(V3 p, V3 x, V3 y, V3 z, float f) : p(p), x(x), y(y), z(z), f(f) {}
-
-	static Camera test_scene() {
-		return Camera({0.0f, 1.0f, 1.0f},
-					  {1.0f, 0.0f, 0.0f},
-					  {0.0f, 1.0f, 0.0f},
-					  {0.0f, 0.0f, 1.0f},
-					  1.0f);
-	}
-
-	static Camera cornell_box() {
-		return Camera({278.0f, 274.0f, 600.0f},
-					  {1.0f, 0.0f, 0.0f},
-					  {0.0f, 1.0f, 0.0f},
-					  {0.0f, 0.0f, 1.0f},
-					  2.2f);
 	}
 };
 
@@ -583,19 +654,11 @@ struct Scene {
 
 namespace BVH {
 	namespace Morton {
-		// uint64_t split(uint64_t x, int log_bits) {
-		// 	const int bit_count = 1 << log_bits;
-		// 	uint64_t mask = ((uint64_t)-1) >> (bit_count / 2);
-		// 	x &= mask;
-		// 	for (int i = log_bits - 1, n = 1 << i; i > 0; --i, n >>= 1) {
-		// 		mask = (mask | (mask << n)) & ~(mask << (n / 2));
-		// 		x = (x | (x << n)) & mask;
-		// 	}
-		// 	return x;
-		// }
-
 		u64 split(u64 x, int log_bits) {
-			u64 mask = ((u64)(1 << (1 << log_bits)) - 1);
+			// NOTE(stekap): For a sequence of bits ...abcdef with length 2^(log_bits), this function produces a sequence where the original
+			//               bits are followed by two zeros each i.e. 00.00.00.00a00b00c00d00e00f
+
+			u64 mask = (((u64)1 << ((u64)1 << log_bits)) - 1);
 			x &= mask;
 
 			for(int i = log_bits, n = 1 << i; i > 0; --i, n >>= 1) {
@@ -604,34 +667,6 @@ namespace BVH {
 			}
 
 			return x;
-
-			// x = abcd
-			// log_bits = 2
-			// bit_count = 4
-			// result = 00a00b00c00d
-
-			// abcd -> 00ab0000cd -> 00a00b00c00d
-
-
-
-			// 0000111100
-			// 0011110000
-			// 0000abcd -> abcdabcd -> ab0000cd
-			// 00ab0000cd -> abab00cdcd -> a00b00c00d
-			//
-			// abab00cdcd
-			// 1111000011
-			// 1100001100
-			// 1111001111
-			// 0011110011
-			// 0011000011
-			// 00ab0000cd
-			// ab0000cd00
-			//
-			// 0000111100
-			// 1111111100
-			// 0011110000
-			// 00a0000d00
 		}
 
 		u64 encode(u64 x, u64 y, u64 z, int log_bits) {
@@ -835,14 +870,11 @@ struct Tracer {
 // TODO(stekap): Find out why is there a dark edge around the glass sphere.
 // TODO(stekap): Check if next_ray is even needed, or it is enough to just use ray.
 int main(int arg_count, char** args) {
-	u64 x = 0b0110;
-	u64 y = 0b1010;
-	u64 z = 0b0010;
-	std::cout << BVH::Morton::encode(x, y, z, 2);
-
+	std::vector<Triangle> triangles = IO::load_obj("models/icosahedron.obj");
+	for(auto x : triangles) x.println();
 	return 0;
 
-	// False in window creating means that it will be hidden i.e. we will only have console output during generation.
+	// False in window creation means that it will be hidden i.e. we will only have console output during generation.
 	GLFWwindow* window = Window::create(400, 400, true);
 
 	if(!window) {
