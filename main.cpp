@@ -21,8 +21,11 @@
 #define Internal static
 
 typedef unsigned char           u8;
+typedef unsigned short         u16;
 typedef unsigned int           u32;
 typedef unsigned long long int u64;
+typedef char                    s8;
+typedef short                  s16;
 typedef int                    s32;
 typedef long long int          s64;
 typedef float                  f32;
@@ -35,13 +38,44 @@ Internal int height = 800;
 
 struct V3 {
 	f32 x, y, z;
+
+	V3() {}
+	V3(f32 x, f32 y, f32 z) : x(x), y(y), z(z) {}
+
 	V3& operator += (const V3& v) {
 		x += v.x;
 		y += v.y;
 		z += v.z;
 		return *this;
 	}
+
+	V3 operator + (const V3& v) const {
+		return V3(x + v.x, y + v.y, z + v.z);
+	}
+
+	V3 operator * (const f32 f) const {
+		return V3(x*f, y*f, z*f);
+	}
+
+	V3& operator *= (const f32 f) {
+		x *= f;
+		y *= f;
+		z *= f;
+		return *this;
+	}
+
+	V3 operator / (const f32 f) const {
+		return V3(x/f, y/f, z/f);
+	}
+
+	V3& operator /= (const f32 f) {
+		x /= f;
+		y /= f;
+		z /= f;
+		return *this;
+	}
 };
+
 struct V4 { f32 x, y, z, w; };
 
 // TODO(stekap): Maybe metaprogram part of the shader source, so that we can define things only once on the host
@@ -108,14 +142,18 @@ struct Triangle {
 		p3 += translation_vector;
 	}
 
-	void print() {
+	V3 centroid() const {
+		return (p1 + p2 + p3) / 3;
+	}
+
+	void print() const {
 		std::cout << "T{[";
 		std::cout << p1.x << " " << p1.y << " " << p1.z << "],";
 		std::cout << p2.x << " " << p2.y << " " << p2.z << "],";
 		std::cout << p3.x << " " << p3.y << " " << p3.z << "]}";
 	}
 
-	void println() {
+	void println() const {
 		print();
 		std::cout << std::endl;
 	}
@@ -867,11 +905,56 @@ struct Tracer {
 	}
 };
 
+void print_morton_bits(u64 morton_code, int log_bits) {
+	int bit_count = 3*(1 << log_bits);
+	for(int i = bit_count - 1; i >= 0; --i) {
+		std::cout << ((morton_code >> i) & 1);
+	}
+	std::cout << std::endl;
+}
+
+void morton_encoding_test() {
+	const u16 world_size = 65535;
+	const s16 left_bound = -((world_size + 1)/2);
+	const s16 right_bound = ((world_size - 1)/2);
+
+	std::cout << "World size: " << world_size << std::endl;
+	std::cout << "Left bound: " << left_bound << std::endl;
+	std::cout << "Right bound: " << right_bound << std::endl;
+
+	std::vector<Triangle> triangles = IO::load_obj("models/icosahedron.obj");
+
+	for(size_t i = 0; i < triangles.size(); ++i) {
+		triangles[i].p1 *= 10000;
+		triangles[i].p2 *= 10000;
+		triangles[i].p3 *= 10000;
+	}
+
+	std::vector<V3> centroids(triangles.size());
+	std::vector<u64> morton_codes(triangles.size());
+
+	for(size_t i = 0; i < triangles.size(); ++i) {
+		centroids[i] = triangles[i].centroid();
+		std::cout << centroids[i].x << ", " << centroids[i].y << ", " << centroids[i].z << "   |   ";
+
+		centroids[i].x -= left_bound;
+		centroids[i].y -= left_bound;
+		centroids[i].z -= left_bound;
+
+		std::cout << centroids[i].x << ", " << centroids[i].y << ", " << centroids[i].z << "   |   ";
+
+		morton_codes[i] = BVH::Morton::encode((u64)centroids[i].x, (u64)centroids[i].y, (u64)centroids[i].z, 4);
+
+		std::cout << morton_codes[i] << "   |   ";
+		print_morton_bits(morton_codes[i], 4);
+	}
+}
+
 // TODO(stekap): Find out why is there a dark edge around the glass sphere.
 // TODO(stekap): Check if next_ray is even needed, or it is enough to just use ray.
 int main(int arg_count, char** args) {
-	std::vector<Triangle> triangles = IO::load_obj("models/icosahedron.obj");
-	for(auto x : triangles) x.println();
+	morton_encoding_test();
+
 	return 0;
 
 	// False in window creation means that it will be hidden i.e. we will only have console output during generation.
