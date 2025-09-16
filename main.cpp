@@ -10,6 +10,7 @@
 #include <string>
 #include <chrono>
 #include <thread>
+#include <numeric>
 #include <algorithm>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -149,8 +150,22 @@ namespace BVH {
 		f32 max[3];
 
 		float half_area() {
-			float edges[] = {max[0] - min[0],max[1] - min[1], max[2] - min[2]};
+			float edges[] = {max[0] - min[0], max[1] - min[1], max[2] - min[2]};
 			return edges[0] * (edges[1] + edges[2]) + edges[1] * edges[2];
+		}
+
+		static f32 distance(AABB box1, AABB box2) {
+			AABB aabb;
+
+			aabb.min[0] = std::min(box1.min[0], box2.min[0]);
+			aabb.min[1] = std::min(box1.min[1], box2.min[1]);
+			aabb.min[2] = std::min(box1.min[2], box2.min[2]);
+
+			aabb.max[0] = std::max(box1.max[0], box2.max[0]);
+			aabb.max[1] = std::max(box1.max[1], box2.max[1]);
+			aabb.max[2] = std::max(box1.max[2], box2.max[2]);
+
+			return aabb.half_area();
 		}
 
 		static AABB unionize(AABB box1, AABB box2) {
@@ -167,6 +182,14 @@ namespace BVH {
 			print();
 			std::cout << std::endl;
 		}
+	};
+
+	// TODO(stekap): If we keep only one primitive in the leaf, then there is no need to have the primitive_count field.
+	//				 Instead, we can encode whether a node is a leaf using highest bit from children_start_index.
+	struct Node {
+		AABB aabb;
+		u32 children_start_index;
+		u32 primitive_count;
 	};
 };
 
@@ -930,16 +953,8 @@ void print_morton_bits(u64 morton_code, int log_bits) {
 	std::cout << std::endl;
 }
 
-void morton_encoding_test() {
-	const u16 world_size = 65535;
-	const s16 left_bound = -((world_size + 1)/2);
-	const s16 right_bound = ((world_size - 1)/2);
-
-	std::cout << "World size: " << world_size << std::endl;
-	std::cout << "Left bound: " << left_bound << std::endl;
-	std::cout << "Right bound: " << right_bound << std::endl;
-
-	std::vector<Triangle> triangles = IO::load_obj("models/icosahedron.obj");
+std::vector<Triangle> load_test_obj(std::string obj_file) {
+	std::vector<Triangle> triangles = IO::load_obj(obj_file);
 
 	for(size_t i = 0; i < triangles.size(); ++i) {
 		triangles[i].p1 *= 10000;
@@ -947,55 +962,76 @@ void morton_encoding_test() {
 		triangles[i].p3 *= 10000;
 	}
 
-	std::vector<V3> centroids(triangles.size());
-	std::vector<BVH::AABB> aabbs(triangles.size());
+	return triangles;
+}
+
+std::pair<std::vector<BVH::Node>, std::vector<u64>> generate_start_nodes_and_sorted_indices(std::vector<Triangle>& triangles) {
+	std::vector<BVH::Node> nodes(triangles.size());
 	std::vector<u64> morton_codes(triangles.size());
 
-	for(size_t i = 0; i < triangles.size(); ++i) {
-		centroids[i] = triangles[i].centroid();
-		aabbs[i] = triangles[i].aabb();
+	const u16 world_size = 65535;
+	const s16 left_bound = -((world_size + 1)/2);
 
-		std::cout << centroids[i].x << ", " << centroids[i].y << ", " << centroids[i].z << "   |   ";
+	for(size_t i = 0; i < nodes.size(); ++i) {
+		nodes[i].aabb = triangles[i].aabb();
+		nodes[i].children_start_index = (u32)i;
+		nodes[i].primitive_count = 1;
 
-		centroids[i].x -= left_bound;
-		centroids[i].y -= left_bound;
-		centroids[i].z -= left_bound;
-
-		std::cout << centroids[i].x << ", " << centroids[i].y << ", " << centroids[i].z << "   |   ";
-
-		morton_codes[i] = BVH::Morton::encode((u64)centroids[i].x, (u64)centroids[i].y, (u64)centroids[i].z, 4);
-
-		std::cout << morton_codes[i] << "   |   ";
-		print_morton_bits(morton_codes[i], 4);
+		V3 centroid = triangles[i].centroid();
+		morton_codes[i] = BVH::Morton::encode((u64)(centroid.x - left_bound),
+											  (u64)(centroid.y - left_bound),
+											  (u64)(centroid.z - left_bound), 4);
 	}
-
-	// TODO(stekap): Implement radix sort instead.
-
 
 	std::vector<u64> triangle_indices(triangles.size());
-	for(size_t i = 0; i < triangles.size(); ++i) {
-		triangle_indices[i] = i;
-	}
+	std::iota(triangle_indices.begin(), triangle_indices.end(), 0);
 
 	std::sort(triangle_indices.begin(), triangle_indices.end(), [&morton_codes](u64 x, u64 y){
 		return morton_codes[x] < morton_codes[y];
 	});
 
-	for(size_t i = 0; i < triangles.size(); ++i) {
-		std::cout << i << "   |   ";
-		std::cout << centroids[i].x << ", " << centroids[i].y << ", " << centroids[i].z << "   |   ";
-		std::cout << morton_codes[i] << std::endl;
-	}
+	return std::pair(nodes, triangle_indices);
+}
 
-	for(size_t i = 0; i < triangles.size(); ++i) {
-		std::cout << triangle_indices[i] << ", ";
+void bvh_construction_test() {
+	std::vector<Triangle> triangles = load_test_obj("models/icosahedron.obj");
+
+	// TODO(stekap): BVH linear layout.
+	std::vector<BVH::Node> bvh;
+
+	auto [nodes, sorted_indices] = generate_start_nodes_and_sorted_indices(triangles);
+
+	std::vector<u64> neighbours(triangles.size());
+
+	int radius = 5;
+	int current_cluster_count = (int)triangles.size();
+
+	while(current_cluster_count > 1) {
+		// TODO(stekap): This for loop work should be distributed to multiple threads.
+		for(int i = 0; i < current_cluster_count; ++i) {
+			float min_distance = std::numeric_limits<float>::max();
+
+			// Finding closest neighbour.
+			for(int j = std::max(i - radius, 0); j < std::min(i + radius, current_cluster_count); ++j) {
+				float distance = BVH::AABB::distance(nodes[i].aabb, nodes[j].aabb);
+				if(i != j && distance < min_distance) {
+					min_distance = distance;
+					neighbours[i] = j;
+				}
+			}
+
+			// Merging
+
+			// Compaction
+
+		}
 	}
 }
 
 // TODO(stekap): Find out why is there a dark edge around the glass sphere.
 // TODO(stekap): Check if next_ray is even needed, or it is enough to just use ray.
 int main(int arg_count, char** args) {
-	morton_encoding_test();
+	bvh_construction_test();
 
 	return 0;
 
