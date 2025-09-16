@@ -10,6 +10,7 @@
 #include <string>
 #include <chrono>
 #include <thread>
+#include <algorithm>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
@@ -120,6 +121,55 @@ struct Sphere {
 	Sphere(V3 p, f32 r, u32 mat_index) : p(p), r(r), mat_index(mat_index) {}
 };
 
+
+namespace BVH {
+	namespace Morton {
+		u64 split(u64 x, int log_bits) {
+			// NOTE(stekap): For a sequence of bits ...abcdef with length 2^(log_bits), this function produces a sequence where the original
+			//               bits are followed by two zeros each i.e. 00.00.00.00a00b00c00d00e00f
+
+			u64 mask = (((u64)1 << ((u64)1 << log_bits)) - 1);
+			x &= mask;
+
+			for(int i = log_bits, n = 1 << i; i > 0; --i, n >>= 1) {
+				mask = (mask | (mask << n)) & ~(mask << (n / 2));
+				x = (x | (x << n)) & mask;
+			}
+
+			return x;
+		}
+
+		u64 encode(u64 x, u64 y, u64 z, int log_bits) {
+			return split(x, log_bits) | (split(y, log_bits) << 1) | (split(z, log_bits) << 2);
+		}
+	};
+
+	struct AABB {
+		f32 min[3];
+		f32 max[3];
+
+		float half_area() {
+			float edges[] = {max[0] - min[0],max[1] - min[1], max[2] - min[2]};
+			return edges[0] * (edges[1] + edges[2]) + edges[1] * edges[2];
+		}
+
+		static AABB unionize(AABB box1, AABB box2) {
+			return AABB({std::min(box1.min[0], box2.min[0]), std::min(box1.min[1], box2.min[1]), std::min(box1.min[2], box2.min[2])},
+						{std::max(box1.max[0], box2.max[0]), std::max(box1.max[1], box2.max[1]), std::max(box1.max[2], box2.max[2])});
+		}
+
+		void print() {
+			std::cout << "{[" << min[0] << " " << min[1] << " " << min[2] << "], "
+					  << "[" << max[0] << " " << max[1] << " " << max[2] << "]}";
+		}
+
+		void println() {
+			print();
+			std::cout << std::endl;
+		}
+	};
+};
+
 // TODO(stekap): Assume one normal per triangle for now. Later expand to per-vertex normals.
 //               Also, texture coords should later be included.
 // TODO(stekap): Probably store vertex array separately and have triangle struct hold indices
@@ -144,6 +194,20 @@ struct Triangle {
 
 	V3 centroid() const {
 		return (p1 + p2 + p3) / 3;
+	}
+
+	BVH::AABB aabb() const {
+		BVH::AABB box;
+
+		box.min[0] = std::min(std::min(p1.x, p2.x), p3.x);
+		box.min[1] = std::min(std::min(p1.y, p2.y), p3.y);
+		box.min[2] = std::min(std::min(p1.z, p2.z), p3.z);
+
+		box.max[0] = std::max(std::max(p1.x, p2.x), p3.x);
+		box.max[1] = std::max(std::max(p1.y, p2.y), p3.y);
+		box.max[2] = std::max(std::max(p1.z, p2.z), p3.z);
+
+		return box;
 	}
 
 	void print() const {
@@ -690,53 +754,6 @@ struct Scene {
 	}
 };
 
-namespace BVH {
-	namespace Morton {
-		u64 split(u64 x, int log_bits) {
-			// NOTE(stekap): For a sequence of bits ...abcdef with length 2^(log_bits), this function produces a sequence where the original
-			//               bits are followed by two zeros each i.e. 00.00.00.00a00b00c00d00e00f
-
-			u64 mask = (((u64)1 << ((u64)1 << log_bits)) - 1);
-			x &= mask;
-
-			for(int i = log_bits, n = 1 << i; i > 0; --i, n >>= 1) {
-				mask = (mask | (mask << n)) & ~(mask << (n / 2));
-				x = (x | (x << n)) & mask;
-			}
-
-			return x;
-		}
-
-		u64 encode(u64 x, u64 y, u64 z, int log_bits) {
-			return split(x, log_bits) | (split(y, log_bits) << 1) | (split(z, log_bits) << 2);
-		}
-	};
-
-	struct AABB {
-		f32 min[3];
-		f32 max[3];
-
-		float half_area() {
-			float edges[] = {max[0] - min[0],max[1] - min[1], max[2] - min[2]};
-			return edges[0] * (edges[1] + edges[2]) + edges[1] * edges[2];
-		}
-
-		static AABB unionize(AABB box1, AABB box2) {
-			return AABB({std::min(box1.min[0], box2.min[0]), std::min(box1.min[1], box2.min[1]), std::min(box1.min[2], box2.min[2])},
-						{std::max(box1.max[0], box2.max[0]), std::max(box1.max[1], box2.max[1]), std::max(box1.max[2], box2.max[2])});
-		}
-
-		void print() {
-			std::cout << "{[" << min[0] << " " << min[1] << " " << min[2] << "], "
-					  << "[" << max[0] << " " << max[1] << " " << max[2] << "]}";
-		}
-
-		void println() {
-			print();
-			std::cout << std::endl;
-		}
-	};
-};
 
 struct Tracer {
 	GLFWwindow* window;
@@ -931,10 +948,13 @@ void morton_encoding_test() {
 	}
 
 	std::vector<V3> centroids(triangles.size());
+	std::vector<BVH::AABB> aabbs(triangles.size());
 	std::vector<u64> morton_codes(triangles.size());
 
 	for(size_t i = 0; i < triangles.size(); ++i) {
 		centroids[i] = triangles[i].centroid();
+		aabbs[i] = triangles[i].aabb();
+
 		std::cout << centroids[i].x << ", " << centroids[i].y << ", " << centroids[i].z << "   |   ";
 
 		centroids[i].x -= left_bound;
@@ -947,6 +967,28 @@ void morton_encoding_test() {
 
 		std::cout << morton_codes[i] << "   |   ";
 		print_morton_bits(morton_codes[i], 4);
+	}
+
+	// TODO(stekap): Implement radix sort instead.
+
+
+	std::vector<u64> triangle_indices(triangles.size());
+	for(size_t i = 0; i < triangles.size(); ++i) {
+		triangle_indices[i] = i;
+	}
+
+	std::sort(triangle_indices.begin(), triangle_indices.end(), [&morton_codes](u64 x, u64 y){
+		return morton_codes[x] < morton_codes[y];
+	});
+
+	for(size_t i = 0; i < triangles.size(); ++i) {
+		std::cout << i << "   |   ";
+		std::cout << centroids[i].x << ", " << centroids[i].y << ", " << centroids[i].z << "   |   ";
+		std::cout << morton_codes[i] << std::endl;
+	}
+
+	for(size_t i = 0; i < triangles.size(); ++i) {
+		std::cout << triangle_indices[i] << ", ";
 	}
 }
 
