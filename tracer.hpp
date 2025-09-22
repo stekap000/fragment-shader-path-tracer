@@ -13,9 +13,9 @@
 #include "log.hpp"
 #include "time.hpp"
 #include "scene.hpp"
+#include "window.hpp"
 
 struct Tracer {
-	GLFWwindow* window;
 	Scene scene;
 	Camera camera;
 	u32 program;
@@ -32,7 +32,7 @@ struct Tracer {
 	};
 
 	Tracer() {}
-	Tracer(GLFWwindow* window, const Scene& scene, const Camera& camera, const u32 program) : window(window), scene(scene), camera(camera), program(program) {
+	Tracer(const Scene& scene, const Camera& camera, const u32 program) : scene(scene), camera(camera), program(program) {
 		OpenGL::use_shader_program(program);
 		initialize_scene();
 		initialize_camera();
@@ -110,7 +110,7 @@ struct Tracer {
 			total_ray_time += Time::now() - ray_time_start;
 
 			if(!debug) {
-				glfwSwapBuffers(window);
+				Window::swap_buffers();
 				percent_done   = (f64)jumps_done * 100 / (f64)(ray_count*ray_jump_count);
 				estimated_wait = (total_ray_time / (ray_index + 1)) * (ray_count - ray_index - 1);
 
@@ -138,13 +138,13 @@ struct Tracer {
 		double time_end;
 
 		time_start = Time::now();
-		while(!glfwWindowShouldClose(window))
+		while(Window::running())
 		{
-			if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-				glfwSetWindowShouldClose(window, true);
+			if(Window::key_pressed(GLFW_KEY_ESCAPE)) {
+				Window::stop_running();
 			}
 
-			if(glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+			if(Window::key_pressed(GLFW_KEY_P)) {
 				std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 			}
 
@@ -156,12 +156,12 @@ struct Tracer {
 			OpenGL::draw_triangles(6);
 
 			run(ray_count, ray_jump_count, batch_jump_count, true);
-			glfwSwapBuffers(window);
 
-			glfwPollEvents();
+			Window::swap_buffers();
+			Window::poll_events();
 
 			time_end = Time::now();
-			glfwSetWindowTitle(window, std::to_string(time_end - time_start).c_str());
+			Window::set_title(std::to_string(time_end - time_start));
 			time_start = time_end;
 		}
 	}

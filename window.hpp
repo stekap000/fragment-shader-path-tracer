@@ -51,6 +51,30 @@ namespace Window {
 
 		glViewport(0, 0, width, height);
 	}
+
+	Internal void swap_buffers() {
+		glfwSwapBuffers(window);
+	}
+
+	Internal void set_title(std::string_view title) {
+		glfwSetWindowTitle(window, title.data());
+	}
+
+	Internal void poll_events() {
+		glfwPollEvents();
+	}
+
+	Internal bool running() {
+		return !glfwWindowShouldClose(window);
+	}
+
+	Internal void stop_running() {
+		glfwSetWindowShouldClose(window, true);
+	}
+
+	Internal bool key_pressed(u32 key) {
+		return glfwGetKey(window, key) == GLFW_PRESS;
+	}
 };
 
 #endif // WINDOW_HPP
