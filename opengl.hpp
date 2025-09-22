@@ -116,6 +116,53 @@ namespace OpenGL {
 		glBindImageTexture(image_bind_index, tex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 		return tex;
 	}
+
+	Internal s32 locate_uniform(u32 program, std::string_view variable_name) {
+		return glGetUniformLocation(program, variable_name.data());
+	}
+
+	Internal void uniform_f32_v3(u32 program, std::string_view variable_name, V3 data) {
+		glUniform3fv(locate_uniform(program, variable_name), 1, (f32*)&data);
+	}
+
+	Internal void uniform_f32_x1(u32 program, std::string_view variable_name, f32 data) {
+		glUniform1f(locate_uniform(program, variable_name), data);
+	}
+
+	Internal void uniform_f32_x1(u32 uniform_location, f32 data) {
+		glUniform1f(uniform_location, data);
+	}
+
+	Internal void uniform_u32_x1(u32 program, std::string_view variable_name, u32 data) {
+		glUniform1ui(locate_uniform(program, variable_name), data);
+	}
+
+	Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
+		glUniform1ui(execution_type_uniform_location, execution_type);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		// TODO(stekap): Think about this barrier and glFinish further.
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		glFinish();
+	}
+
+	Internal void fill_uniform_buffer(u32 uniform_buffer, u64 size_in_bytes, void* data) {
+		glBindBuffer(GL_UNIFORM_BUFFER, uniform_buffer);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, size_in_bytes, data);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	}
+
+	void link_uniform_buffer_to_index(u32 bind_index, u32 uniform_buffer, u64 size_in_bytes) {
+		glBindBufferRange(GL_UNIFORM_BUFFER, bind_index, uniform_buffer, 0, size_in_bytes);
+	}
+
+	Internal void clear_color(f32 r, f32 g, f32 b, f32 a) {
+		glClearColor(r, g, b, a);
+		glClear(GL_COLOR_BUFFER_BIT);
+	}
+
+	Internal void draw_triangles(u32 count) {
+		glDrawArrays(GL_TRIANGLES, 0, count);
+	}
 };
 
 #endif // OPENGL_HPP

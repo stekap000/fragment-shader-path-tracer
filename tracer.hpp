@@ -32,7 +32,7 @@ struct Tracer {
 	};
 
 	Tracer() {}
-	Tracer(GLFWwindow* window, Scene& scene, Camera& camera, u32 program) : window(window), scene(scene), camera(camera), program(program) {
+	Tracer(GLFWwindow* window, const Scene& scene, const Camera& camera, const u32 program) : window(window), scene(scene), camera(camera), program(program) {
 		OpenGL::use_shader_program(program);
 		initialize_scene();
 		initialize_camera();
@@ -44,42 +44,30 @@ struct Tracer {
 		triangles_ub = OpenGL::create_uniform_buffer(ShaderConfig::max_triangle_count * sizeof(Triangle));
 		materials_ub = OpenGL::create_uniform_buffer(ShaderConfig::max_material_count * sizeof(Material));
 
-		glBindBufferRange(GL_UNIFORM_BUFFER, ShaderConfig::spheres_ub_bind_index,   spheres_ub,   0, ShaderConfig::max_sphere_count*sizeof(Sphere));
-		glBindBufferRange(GL_UNIFORM_BUFFER, ShaderConfig::triangles_ub_bind_index, triangles_ub, 0, ShaderConfig::max_triangle_count*sizeof(Triangle));
-		glBindBufferRange(GL_UNIFORM_BUFFER, ShaderConfig::materials_ub_bind_index, materials_ub, 0, ShaderConfig::max_material_count*sizeof(Material));
+		OpenGL::link_uniform_buffer_to_index(ShaderConfig::spheres_ub_bind_index,   spheres_ub,   ShaderConfig::max_sphere_count*sizeof(Sphere));
+		OpenGL::link_uniform_buffer_to_index(ShaderConfig::triangles_ub_bind_index, triangles_ub, ShaderConfig::max_triangle_count*sizeof(Triangle));
+		OpenGL::link_uniform_buffer_to_index(ShaderConfig::materials_ub_bind_index, materials_ub, ShaderConfig::max_material_count*sizeof(Material));
 
-		glBindBuffer(GL_UNIFORM_BUFFER, spheres_ub);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, scene.spheres.size()*sizeof(Sphere), scene.spheres.data());
-		glBindBuffer(GL_UNIFORM_BUFFER, triangles_ub);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, scene.triangles.size()*sizeof(Triangle), scene.triangles.data());
-		glBindBuffer(GL_UNIFORM_BUFFER, materials_ub);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, scene.materials.size()*sizeof(Material), scene.materials.data());
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		OpenGL::fill_uniform_buffer(spheres_ub,   scene.spheres.size()   * sizeof(Sphere),   scene.spheres.data());
+		OpenGL::fill_uniform_buffer(triangles_ub, scene.triangles.size() * sizeof(Triangle), scene.triangles.data());
+		OpenGL::fill_uniform_buffer(materials_ub, scene.materials.size() * sizeof(Material), scene.materials.data());
 	}
 
 	void initialize_camera() {
-		glUniform3fv(glGetUniformLocation(program, "camera.p"), 1, (f32*)&camera.p);
-		glUniform3fv(glGetUniformLocation(program, "camera.x"), 1, (f32*)&camera.x);
-		glUniform3fv(glGetUniformLocation(program, "camera.y"), 1, (f32*)&camera.y);
-		glUniform3fv(glGetUniformLocation(program, "camera.z"), 1, (f32*)&camera.z);
-		glUniform1f(glGetUniformLocation(program, "camera.f"), camera.f);
+		OpenGL::uniform_f32_v3(program, "camera.p", camera.p);
+		OpenGL::uniform_f32_v3(program, "camera.x", camera.x);
+		OpenGL::uniform_f32_v3(program, "camera.y", camera.y);
+		OpenGL::uniform_f32_v3(program, "camera.z", camera.z);
+		OpenGL::uniform_f32_x1(program, "camera.f", camera.f);
 	}
 
 	void initialize_program() {
-		glUniform1f(glGetUniformLocation(program, "width"), (f32)Window::width);
-		glUniform1f(glGetUniformLocation(program, "height"), (f32)Window::height);
-		glUniform1ui(glGetUniformLocation(program, "sphere_count"), (u32)scene.spheres.size());
-		glUniform1ui(glGetUniformLocation(program, "triangle_count"), (u32)scene.triangles.size());
-		glUniform1ui(glGetUniformLocation(program, "triangle_light_count"), (u32)scene.triangle_light_count);
-		glUniform1ui(glGetUniformLocation(program, "sphere_light_count"), (u32)scene.sphere_light_count);
-	}
-
-	Internal void dispatch_batch(s32 execution_type_uniform_location, u32 execution_type) {
-		glUniform1ui(execution_type_uniform_location, execution_type);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-		// TODO(stekap): Think about this barrier and glFinish further.
-		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-		glFinish();
+		OpenGL::uniform_f32_x1(program, "width",                (f32)Window::width);
+		OpenGL::uniform_f32_x1(program, "height",               (f32)Window::height);
+		OpenGL::uniform_u32_x1(program, "sphere_count",         (u32)scene.spheres.size());
+		OpenGL::uniform_u32_x1(program, "sphere_light_count",   (u32)scene.sphere_light_count);
+		OpenGL::uniform_u32_x1(program, "triangle_count",       (u32)scene.triangles.size());
+		OpenGL::uniform_u32_x1(program, "triangle_light_count", (u32)scene.triangle_light_count);
 	}
 
 	void run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count, bool debug = false) {
@@ -87,11 +75,11 @@ struct Tracer {
 
 		if(!debug) Log::batching_configuration(ray_count, batch_count, ray_jump_count, batch_jump_count);
 
-		s32 execution_type_uniform_location = glGetUniformLocation(program, "execution_type");
-		s32 time_uniform_location           = glGetUniformLocation(program, "time");
+		s32 execution_type_uniform_location = OpenGL::locate_uniform(program, "execution_type");
+		s32 time_uniform_location           = OpenGL::locate_uniform(program, "time");
 
-		glUniform1ui(glGetUniformLocation(program, "ray_count"), ray_count);
-		glUniform1ui(glGetUniformLocation(program, "batch_jump_count"), batch_jump_count);
+		OpenGL::uniform_u32_x1(program, "ray_count", ray_count);
+		OpenGL::uniform_u32_x1(program, "batch_jump_count", batch_jump_count);
 
 		u32 batch_state_texture  = OpenGL::create_and_bind_rgba32f_image2d(ShaderConfig::ray_size_in_vec4*Window::width, Window::height, ShaderConfig::batch_state_bind_index);
 		__ignore__(batch_state_texture);
@@ -107,17 +95,17 @@ struct Tracer {
 		for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
 			ray_time_start = Time::now();
 
-			glUniform1ui(glGetUniformLocation(program, "processed_ray_count"), ray_index + 1);
+			OpenGL::uniform_u32_x1(program, "processed_ray_count", ray_index + 1);
 
-			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
+			OpenGL::dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INITIALIZE);
 
 			for(u32 batch_index = 0; batch_index < batch_count; ++batch_index) {
-				glUniform1f(time_uniform_location, (f32)Time::now());
-				dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_TRACE);
+				OpenGL::uniform_f32_x1(time_uniform_location, (f32)Time::now());
+				OpenGL::dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_TRACE);
 				jumps_done += batch_jump_count;
 			}
 
-			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
+			OpenGL::dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_INCLUDE_RAY_COLOR);
 
 			total_ray_time += Time::now() - ray_time_start;
 
@@ -136,15 +124,15 @@ struct Tracer {
 			std::cout << std::endl;
 			Log::measured_timings(total_time, ray_count, batch_count);
 
-			dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_CONVERT_TO_SRGB);
+			OpenGL::dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_CONVERT_TO_SRGB);
 			IO::save_final_output("generated_image.png");
 		}
 	}
 
 	void debug(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count) {
-		s32 time_uniform_location   = glGetUniformLocation(program, "time");
-		s32 width_uniform_location  = glGetUniformLocation(program, "width");
-		s32 height_uniform_location = glGetUniformLocation(program, "height");
+		s32 time_uniform_location   = OpenGL::locate_uniform(program, "time");
+		s32 width_uniform_location  = OpenGL::locate_uniform(program, "width");
+		s32 height_uniform_location = OpenGL::locate_uniform(program, "height");
 
 		double time_start;
 		double time_end;
@@ -160,14 +148,12 @@ struct Tracer {
 				std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 			}
 
-			glUniform1f(time_uniform_location, (f32)Time::now());
-			glUniform1f(width_uniform_location, (f32)Window::width);
-			glUniform1f(height_uniform_location, (f32)Window::height);
+			OpenGL::uniform_f32_x1(time_uniform_location, (f32)Time::now());
+			OpenGL::uniform_f32_x1(width_uniform_location, (f32)Window::width);
+			OpenGL::uniform_f32_x1(height_uniform_location, (f32)Window::height);
 
-			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-			glClear(GL_COLOR_BUFFER_BIT);
-
-			glDrawArrays(GL_TRIANGLES, 0, 6);
+			OpenGL::clear_color(0.0f, 0.0f, 0.0f, 1.0f);
+			OpenGL::draw_triangles(6);
 
 			run(ray_count, ray_jump_count, batch_jump_count, true);
 			glfwSwapBuffers(window);

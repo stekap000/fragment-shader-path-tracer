@@ -43,6 +43,7 @@ namespace IO {
 
 	Internal void save_final_output(std::string image_name) {
 		std::vector<u8> pixels(4*Window::width*Window::height);
+
 		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 		stbi_flip_vertically_on_write(true);
 		stbi_write_png(image_name.c_str(), Window::width, Window::height, 4, pixels.data(), 4*Window::width);
