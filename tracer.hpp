@@ -33,6 +33,7 @@ struct Tracer {
 
 	Tracer() {}
 	Tracer(const Scene& scene, const Camera& camera, const u32 program) : scene(scene), camera(camera), program(program) {
+		OpenGL::initialize_tracer_rectangle();
 		OpenGL::use_shader_program(program);
 		initialize_scene();
 		initialize_camera();
