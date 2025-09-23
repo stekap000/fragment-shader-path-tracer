@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <numeric>
 #include <vector>
+#include <memory>
+#include <thread>
+#include <barrier>
 
 #include "shared.hpp"
 #include "io.hpp"
@@ -107,6 +110,17 @@ namespace BVH {
 		u32 second_child_index;
 	};
 
+	struct Node {
+		AABB aabb;
+		std::unique_ptr<Node> left_child;
+		std::unique_ptr<Node> right_child;
+		s32 triangle_index;
+
+		Node() {}
+		Node(const AABB& aabb, std::unique_ptr<Node> left_child, std::unique_ptr<Node> right_child, s32 triangle_index = -1)
+			: aabb(aabb), left_child(std::move(left_child)), right_child(std::move(right_child)), triangle_index(triangle_index) {}
+	};
+
 	std::vector<Triangle> load_test_obj(std::string obj_file) {
 		std::vector<Triangle> triangles = IO::load_obj(obj_file);
 
@@ -119,8 +133,9 @@ namespace BVH {
 		return triangles;
 	}
 
-	std::vector<BVH::BuildNode> generate_sorted_start_nodes(std::vector<Triangle>& triangles) {
-		std::vector<BVH::BuildNode> nodes(triangles.size());
+	std::vector<std::unique_ptr<Node>> generate_sorted_input() {
+		std::vector<Triangle> triangles = load_test_obj("models/icosahedron.obj");
+		std::vector<Node> nodes(triangles.size());
 		std::vector<u64> morton_codes(triangles.size());
 
 		const u16 world_size = 65535;
@@ -128,16 +143,15 @@ namespace BVH {
 
 		for(size_t i = 0; i < nodes.size(); ++i) {
 			nodes[i].aabb = AABB::for_triangle(triangles[i]);
-			nodes[i].first_child_index = (u32)i;
-			nodes[i].second_child_index = (u32)i;
+			nodes[i].left_child = nullptr;
+			nodes[i].right_child = nullptr;
+			nodes[i].triangle_index = i;
 
 			V3 centroid = triangles[i].centroid();
 			morton_codes[i] = BVH::Morton::encode((u64)(centroid.x - left_bound),
 												  (u64)(centroid.y - left_bound),
 												  (u64)(centroid.z - left_bound), 4);
 		}
-
-		// TODO(stekap): Use custom radix sort here.
 
 		std::vector<u64> sorted_indices(triangles.size());
 		std::iota(sorted_indices.begin(), sorted_indices.end(), 0);
@@ -146,70 +160,79 @@ namespace BVH {
 			return morton_codes[x] < morton_codes[y];
 		});
 
-		std::vector<BVH::BuildNode> sorted_nodes(nodes.size());
+		std::vector<std::unique_ptr<Node>> sorted_input(nodes.size());
 		for(size_t i = 0; i < sorted_indices.size(); ++i) {
-			sorted_nodes[i] = nodes[sorted_indices[i]];
+			sorted_input[i] = std::make_unique<Node>(nodes[sorted_indices[i]].aabb, nullptr, nullptr, nodes[sorted_indices[i]].triangle_index);
 		}
 
-		return sorted_nodes;
+		return sorted_input;
 	}
 
-	void construction_test() {
-		std::vector<Triangle> triangles = load_test_obj("models/icosahedron.obj");
+	void compute_prefix_scan(std::vector<int>& input) {
 
-		// TODO(stekap): BVH linear layout.
-		std::vector<BVH::BuildNode> temp_bvh = generate_sorted_start_nodes(triangles);
+	}
 
-		// node: aabb, primitive_start_index, primitive_count
+	void construct_bvh() {
+		std::vector<std::unique_ptr<Node>> in = generate_sorted_input();
+		std::vector<std::unique_ptr<Node>> out(in.size());
 
-		// triangles      : actual triangle data
-		// nodes          : leaf nodes of the bvh that only contain one triangle index
-		// sorted indices : morton order of the nodes
-		// bvh            : actual bvh tree (we want to store node children next to each other)
-
-		std::vector<u64> neighbours(triangles.size());
+		std::vector<int> neighbors(in.size());
+		std::vector<int> prefix_scan(in.size());
 
 		int radius = 5;
-		int first_cluster_index = 0;
-		int current_cluster_count = (int)triangles.size();
+		int current_cluster_count = in.size();
 
-		// u32 worker_count = std::thread::hardware_concurrency();
-		// std::vector<std::thread> threads(worker_count);
-		// std::barrier worker_barrier(worker_count);
+		u32 thread_count = std::thread::hardware_concurrency();
+		std::vector<std::thread> threads(thread_count);
+		std::barrier thread_barrier(thread_count);
 
-		while(current_cluster_count > 1) {
-			// TODO(stekap): This for loop work should be distributed to multiple threads.
-			for(int i = first_cluster_index; i < current_cluster_count; ++i) {
+		auto thread_work = [&current_cluster_count, &in, &out, &neighbors, &prefix_scan, &thread_barrier, &radius](u32 thread_id, u32 thread_count) {
+			for(int i = thread_id; i < current_cluster_count; i += thread_count) {
 				float min_distance = std::numeric_limits<float>::max();
 
 				// Finding closest neighbour.
 				for(int j = std::max(i - radius, 0); j < std::min(i + radius, current_cluster_count); ++j) {
-					float distance = BVH::AABB::distance(temp_bvh[i].aabb, temp_bvh[j].aabb);
+					float distance = AABB::distance(in[i]->aabb, in[j]->aabb);
 					if(i != j && distance < min_distance) {
 						min_distance = distance;
-						neighbours[i] = j;
+						neighbors[i] = j;
 					}
 				}
-
-				// BARRIER
-
-				// Merging
-				// o o _ o o o o o o _ o | M
-				// if((int)neighbours[neighbours[i]] == i && i < (int)neighbours[i]) {
-				// 	BVH::BuildNode build_node;
-				// 	build_node.aabb = BVH::AABB::unionize(temp_bvh[i].aabb, temp_bvh[neighbours[i]].aabb);
-				// 	build_node.first_child_index = i;
-				// 	build_node.second_child_index = neighbours[i];
-				// 	temp_bvh.push_back(build_node);
-				// }
-
-				// BARRIER
-
-				// Compaction
-				// P[i] value incremented if the node is valid i.e. if it is not valid, then it stays the same as P[i-1].
-
-				// BARRIER
 			}
+
+			thread_barrier.arrive_and_wait();
+
+			for(int i = thread_id; i < current_cluster_count; i += thread_count) {
+				// Merging
+				if(neighbors[neighbors[i]] == i && i < neighbors[i]) {
+					in[i] = std::make_unique<Node>(AABB::unionize(in[i]->aabb, in[neighbors[i]]->aabb), std::move(in[i]), std::move(in[neighbors[i]]), -1);
+				}
+			}
+
+			thread_barrier.arrive_and_wait();
+
+			compute_prefix_scan(prefix_scan);
+
+			// Compaction
+			// P[i] value incremented if the node is valid i.e. if it is not valid, then it stays the same as P[i-1].
+
+			// o o _ _ o _ o o o _
+			// 1 1 0 0 1 0 1 1 1 0
+			// 1 2 2 2 3 3 4 5 6 6
+			// 0 1 1 1 2 2 3 4 5 5
+
+			// a  b   c  d   e  f   g  h   i  j
+			// a ab   c cd   e ef   g gh   i ij
+			// a ab abc cd cde ef efg gh ghi ij
+
+			thread_barrier.arrive_and_wait();
+		};
+
+		while(current_cluster_count > 1) {
+
+
+			current_cluster_count = prefix_scan[current_cluster_count - 1];
+			std::swap(in, out);
 		}
 	}
 };
