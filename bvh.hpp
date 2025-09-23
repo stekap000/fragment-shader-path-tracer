@@ -145,7 +145,7 @@ namespace BVH {
 			nodes[i].aabb = AABB::for_triangle(triangles[i]);
 			nodes[i].left_child = nullptr;
 			nodes[i].right_child = nullptr;
-			nodes[i].triangle_index = i;
+			nodes[i].triangle_index = (s32)i;
 
 			V3 centroid = triangles[i].centroid();
 			morton_codes[i] = BVH::Morton::encode((u64)(centroid.x - left_bound),
@@ -168,25 +168,22 @@ namespace BVH {
 		return sorted_input;
 	}
 
-	void compute_prefix_scan(std::vector<int>& input) {
-
-	}
-
 	void construct_bvh() {
 		std::vector<std::unique_ptr<Node>> in = generate_sorted_input();
 		std::vector<std::unique_ptr<Node>> out(in.size());
-
-		std::vector<int> neighbors(in.size());
-		std::vector<int> prefix_scan(in.size());
-
-		int radius = 5;
-		int current_cluster_count = in.size();
 
 		u32 thread_count = std::thread::hardware_concurrency();
 		std::vector<std::thread> threads(thread_count);
 		std::barrier thread_barrier(thread_count);
 
-		auto thread_work = [&current_cluster_count, &in, &out, &neighbors, &prefix_scan, &thread_barrier, &radius](u32 thread_id, u32 thread_count) {
+		std::vector<int> neighbors(in.size());
+		std::vector<int> prefix_sum(in.size() + 1);
+		std::vector<int> block_prefix_sum(thread_count);
+
+		int radius = 5;
+		int current_cluster_count = (int)in.size();
+
+		auto thread_work = [&current_cluster_count, &in, &out, &neighbors, &prefix_sum, &block_prefix_sum, &thread_barrier, &radius] (u32 thread_id, u32 thread_count) {
 			for(int i = thread_id; i < current_cluster_count; i += thread_count) {
 				float min_distance = std::numeric_limits<float>::max();
 
@@ -211,19 +208,46 @@ namespace BVH {
 
 			thread_barrier.arrive_and_wait();
 
-			compute_prefix_scan(prefix_scan);
-
 			// Compaction
 			// P[i] value incremented if the node is valid i.e. if it is not valid, then it stays the same as P[i-1].
+			int clusters_per_thread = (int)in.size() / thread_count;
+			int clusters_remainder = in.size() % thread_count;
+			int start_index = thread_id * clusters_per_thread;
+			if(thread_id == thread_count - 1) {
+				clusters_per_thread += clusters_remainder;
+			}
 
-			// o o _ _ o _ o o o _
-			// 1 1 0 0 1 0 1 1 1 0
-			// 1 2 2 2 3 3 4 5 6 6
-			// 0 1 1 1 2 2 3 4 5 5
+			for(int i = start_index; i < start_index + clusters_per_thread; ++i) {
+				prefix_sum[i+1] = prefix_sum[i] + (in[i] != nullptr);
+			}
 
-			// a  b   c  d   e  f   g  h   i  j
-			// a ab   c cd   e ef   g gh   i ij
-			// a ab abc cd cde ef efg gh ghi ij
+			thread_barrier.arrive_and_wait();
+
+			block_prefix_sum[thread_id] = prefix_sum[thread_id * (in.size() / thread_count)];
+
+			thread_barrier.arrive_and_wait();
+
+			if(thread_id == 0) {
+				for(int i = 1; i < (int)thread_count; ++i) {
+					block_prefix_sum[i] += block_prefix_sum[i-1];
+				}
+			}
+
+			thread_barrier.arrive_and_wait();
+
+			for(int i = start_index; i < start_index + clusters_per_thread; ++i) {
+				prefix_sum[i+1] += block_prefix_sum[thread_id];
+			}
+
+			thread_barrier.arrive_and_wait();
+
+			// Prefix sum is computed at this point.
+
+			for(int i = thread_id; i < current_cluster_count; i += thread_count) {
+				if(in[i] != nullptr) {
+					out[prefix_sum[i]] = std::move(in[i]);
+				}
+			}
 
 			thread_barrier.arrive_and_wait();
 		};
@@ -231,7 +255,7 @@ namespace BVH {
 		while(current_cluster_count > 1) {
 
 
-			current_cluster_count = prefix_scan[current_cluster_count - 1];
+			current_cluster_count = prefix_sum[current_cluster_count - 1];
 			std::swap(in, out);
 		}
 	}
