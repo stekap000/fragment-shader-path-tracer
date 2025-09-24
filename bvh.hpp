@@ -134,8 +134,7 @@ namespace BVH {
 		return triangles;
 	}
 
-	std::vector<std::unique_ptr<Node>> generate_sorted_input() {
-		std::vector<Triangle> triangles = load_test_obj("models/icosahedron.obj");
+	std::vector<std::unique_ptr<Node>> generate_sorted_input(std::vector<Triangle>& triangles) {
 		std::vector<Node> nodes(triangles.size());
 		std::vector<u64> morton_codes(triangles.size());
 
@@ -169,11 +168,10 @@ namespace BVH {
 		return sorted_input;
 	}
 
-	void construct_bvh() {
-		std::vector<std::unique_ptr<Node>> in = generate_sorted_input();
+	std::unique_ptr<Node> construct(std::vector<Triangle>& triangles, int radius, int thread_count) {
+		std::vector<std::unique_ptr<Node>> in = generate_sorted_input(triangles);
 		std::vector<std::unique_ptr<Node>> out(in.size());
 
-		int thread_count = std::thread::hardware_concurrency();
 		std::vector<std::thread> threads(thread_count);
 		std::barrier thread_barrier(thread_count);
 
@@ -181,7 +179,6 @@ namespace BVH {
 		std::vector<int> prefix_sum(in.size() + 1);
 		std::vector<int> block_prefix_sum(thread_count);
 
-		int radius = 5;
 		int current_cluster_count = (int)in.size();
 
 		std::condition_variable cv;
@@ -192,10 +189,13 @@ namespace BVH {
 				done = false;
 			}
 
+			// TODO(stekap): Rewrite the loop pattern for this and similar loops below that don't process contiguous elements in order
+			//               to minimize false sharing problems.
+
+			// Finding closest neighbour.
 			for(int i = thread_id; i < current_cluster_count; i += thread_count) {
 				float min_distance = std::numeric_limits<float>::max();
 
-				// Finding closest neighbour.
 				for(int j = std::max(i - radius, 0); j < std::min(i + radius, current_cluster_count); ++j) {
 					float distance = AABB::distance(in[i]->aabb, in[j]->aabb);
 					if(i != j && distance < min_distance) {
@@ -207,8 +207,8 @@ namespace BVH {
 
 			thread_barrier.arrive_and_wait();
 
+			// Merging
 			for(int i = thread_id; i < current_cluster_count; i += thread_count) {
-				// Merging
 				if(neighbors[neighbors[i]] == i && i < neighbors[i]) {
 					in[i] = std::make_unique<Node>(AABB::unionize(in[i]->aabb, in[neighbors[i]]->aabb), std::move(in[i]), std::move(in[neighbors[i]]), -1);
 				}
@@ -217,7 +217,6 @@ namespace BVH {
 			thread_barrier.arrive_and_wait();
 
 			// Compaction
-			// P[i] value incremented if the node is valid i.e. if it is not valid, then it stays the same as P[i-1].
 			int clusters_per_thread = (int)in.size() / thread_count;
 			int clusters_remainder = in.size() % thread_count;
 			int start_index = thread_id * clusters_per_thread;
@@ -232,11 +231,11 @@ namespace BVH {
 
 			thread_barrier.arrive_and_wait();
 
-			// TODO(stekap): This prefix_sum index will not work for the last block if it has more elements than other blocks.
 			block_prefix_sum[thread_id] = prefix_sum[thread_id * (in.size() / thread_count)];
 
 			thread_barrier.arrive_and_wait();
 
+			// Sequentially calculate block_prefix_sum (valid for small iteration count i.e. small number of parallel workers).
 			if(thread_id == 0) {
 				for(int i = 1; i < thread_count; ++i) {
 					block_prefix_sum[i] += block_prefix_sum[i-1];
@@ -251,14 +250,14 @@ namespace BVH {
 
 			thread_barrier.arrive_and_wait();
 
-			// Prefix sum is computed at this point.
-			// 0 | 1 1 0 1 1 | 0 1 1 1 0 | 1 1  1  1  1 |  1  1  1  0  1
-			// 0 | 1 2 2 3 4 | 0 1 2 3 3 | 1 2  3  4  5 |  1  2  3  3  4
-			//     0 0 0 0 0 | 4 4 4 4 4 | 3 3  3  3  3 |  5  5  5  5  5
-			//     0 0 0 0 0 | 4 4 4 4 4 | 7 7  7  7  7 | 12 12 12 12 12
-			// 0 | 1 2 2 3 4 | 4 5 6 7 7 | 8 9 10 11 12 | 13 14 15 15 16
+			// At this point, prefix_sum is computed and ready.
+			// Example for icosahedron (first iteration):
+			// validity                  : 0 | 1 1 0 1 1 | 0 1 1 1 0 | 1 1  1  1  1 |  1  1  1  0  1
+			// prefix_sum (before block) : 0 | 1 2 2 3 4 | 0 1 2 3 3 | 1 2  3  4  5 |  1  2  3  3  4
+			// block_prefix_sum          :   |     0     |     4     |      7       |       12
+			// prefix_sum (after block)  : 0 | 1 2 2 3 4 | 4 5 6 7 7 | 8 9 10 11 12 | 13 14 15 15 16
 
-			for(int i = thread_id; i < current_cluster_count; i += thread_count) {
+			for(int i = start_index; i < start_index + clusters_per_thread; ++i) {
 				if(in[i] != nullptr) {
 					out[prefix_sum[i+1] - 1] = std::move(in[i]);
 				}
@@ -285,8 +284,40 @@ namespace BVH {
 				threads[i].join();
 			}
 
-			current_cluster_count = prefix_sum[current_cluster_count - 1];
+			current_cluster_count = prefix_sum[current_cluster_count];
+
 			std::swap(in, out);
+		}
+
+		return std::move(in[0]);
+	}
+
+	namespace Test {
+		void print_structure(const std::unique_ptr<Node>& bvh, std::string prefix = "") {
+			if(bvh != nullptr) {
+				if(bvh->triangle_index != -1) {
+					std::cout << prefix << bvh->triangle_index << std::endl;
+				}
+				else {
+					std::cout << prefix << "O" << std::endl;
+				}
+				print_structure(bvh->right_child, prefix + "\t");
+				print_structure(bvh->left_child, prefix + "\t");
+			}
+		}
+
+		void count_leaves(const std::unique_ptr<Node>& bvh, int& count) {
+			if(bvh != nullptr) {
+				if(bvh->triangle_index != -1) ++count;
+				count_leaves(bvh->left_child, count);
+				count_leaves(bvh->right_child, count);
+			}
+		}
+
+		void print_leaf_count(const std::unique_ptr<Node>& bvh) {
+			int count = 0;
+			count_leaves(bvh, count);
+			std::cout << "Leaf count: " << count << std::endl;
 		}
 	}
 };
