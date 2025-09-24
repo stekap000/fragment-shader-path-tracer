@@ -48,6 +48,17 @@ namespace BVH {
 		f32 min[3];
 		f32 max[3];
 
+		AABB() {}
+		AABB(f32 min0, f32 min1, f32 min2, f32 max0, f32 max1, f32 max2) {
+			min[0] = min0;
+			min[1] = min1;
+			min[2] = min2;
+
+			max[0] = max0;
+			max[1] = max1;
+			max[2] = max2;
+		}
+
 		float half_area() {
 			float edges[] = {max[0] - min[0], max[1] - min[1], max[2] - min[2]};
 			return edges[0] * (edges[1] + edges[2]) + edges[1] * edges[2];
@@ -68,8 +79,12 @@ namespace BVH {
 		}
 
 		static AABB unionize(AABB box1, AABB box2) {
-			return AABB({std::min(box1.min[0], box2.min[0]), std::min(box1.min[1], box2.min[1]), std::min(box1.min[2], box2.min[2])},
-						{std::max(box1.max[0], box2.max[0]), std::max(box1.max[1], box2.max[1]), std::max(box1.max[2], box2.max[2])});
+			return AABB(std::min(box1.min[0], box2.min[0]),
+						std::min(box1.min[1], box2.min[1]),
+						std::min(box1.min[2], box2.min[2]),
+						std::max(box1.max[0], box2.max[0]),
+						std::max(box1.max[1], box2.max[1]),
+						std::max(box1.max[2], box2.max[2]));
 		}
 
 		static BVH::AABB for_triangle(Triangle t) {
@@ -95,20 +110,6 @@ namespace BVH {
 			print();
 			std::cout << std::endl;
 		}
-	};
-
-	// TODO(stekap): If we keep only one primitive in the leaf, then there is no need to have the primitive_count field.
-	//				 Instead, we can encode whether a node is a leaf using highest bit from children_start_index.
-	struct ShaderNode {
-		AABB aabb;
-		u32 children_start_index;
-		u32 primitive_count;
-	};
-
-	struct BuildNode {
-		AABB aabb;
-		u32 first_child_index;
-		u32 second_child_index;
 	};
 
 	struct Node {
@@ -153,6 +154,8 @@ namespace BVH {
 												  (u64)(centroid.z - left_bound), 4);
 		}
 
+		// TODO(stekap): Do custom radix sort here.
+
 		std::vector<u64> sorted_indices(triangles.size());
 		std::iota(sorted_indices.begin(), sorted_indices.end(), 0);
 
@@ -185,19 +188,22 @@ namespace BVH {
 		bool done = false;
 
 		auto thread_work = [&current_cluster_count, &in, &out, &neighbors, &prefix_sum, &block_prefix_sum, &thread_barrier, &radius, &cv, &done] (int thread_id, int thread_count) {
-			if(thread_id == 0) {
-				done = false;
+			done = false;
+
+			int clusters_per_thread = current_cluster_count / thread_count;
+			int clusters_remainder = current_cluster_count % thread_count;
+			int start_index = thread_id * clusters_per_thread;
+			if(thread_id == thread_count - 1) {
+				clusters_per_thread += clusters_remainder;
 			}
 
-			// TODO(stekap): Rewrite the loop pattern for this and similar loops below that don't process contiguous elements in order
-			//               to minimize false sharing problems.
-
 			// Finding closest neighbour.
-			for(int i = thread_id; i < current_cluster_count; i += thread_count) {
+			for(int i = start_index; i < start_index + clusters_per_thread; ++i) {
 				float min_distance = std::numeric_limits<float>::max();
 
-				for(int j = std::max(i - radius, 0); j < std::min(i + radius, current_cluster_count); ++j) {
+				for(int j = std::max(i - radius, 0); j < std::min(i + radius + 1, current_cluster_count); ++j) {
 					float distance = AABB::distance(in[i]->aabb, in[j]->aabb);
+
 					if(i != j && distance < min_distance) {
 						min_distance = distance;
 						neighbors[i] = j;
@@ -208,7 +214,7 @@ namespace BVH {
 			thread_barrier.arrive_and_wait();
 
 			// Merging
-			for(int i = thread_id; i < current_cluster_count; i += thread_count) {
+			for(int i = start_index; i < start_index + clusters_per_thread; ++i) {
 				if(neighbors[neighbors[i]] == i && i < neighbors[i]) {
 					in[i] = std::make_unique<Node>(AABB::unionize(in[i]->aabb, in[neighbors[i]]->aabb), std::move(in[i]), std::move(in[neighbors[i]]), -1);
 				}
@@ -217,13 +223,6 @@ namespace BVH {
 			thread_barrier.arrive_and_wait();
 
 			// Compaction
-			int clusters_per_thread = (int)in.size() / thread_count;
-			int clusters_remainder = in.size() % thread_count;
-			int start_index = thread_id * clusters_per_thread;
-			if(thread_id == thread_count - 1) {
-				clusters_per_thread += clusters_remainder;
-			}
-
 			prefix_sum[start_index+1] = (in[start_index] != nullptr);
 			for(int i = start_index + 1; i < start_index + clusters_per_thread; ++i) {
 				prefix_sum[i+1] = prefix_sum[i] + (in[i] != nullptr);
@@ -231,7 +230,7 @@ namespace BVH {
 
 			thread_barrier.arrive_and_wait();
 
-			block_prefix_sum[thread_id] = prefix_sum[thread_id * (in.size() / thread_count)];
+			block_prefix_sum[thread_id] = prefix_sum[thread_id * (current_cluster_count / thread_count)];
 
 			thread_barrier.arrive_and_wait();
 
@@ -251,7 +250,7 @@ namespace BVH {
 			thread_barrier.arrive_and_wait();
 
 			// At this point, prefix_sum is computed and ready.
-			// Example for icosahedron (first iteration):
+			// Example for 20 triangles:
 			// validity                  : 0 | 1 1 0 1 1 | 0 1 1 1 0 | 1 1  1  1  1 |  1  1  1  0  1
 			// prefix_sum (before block) : 0 | 1 2 2 3 4 | 0 1 2 3 3 | 1 2  3  4  5 |  1  2  3  3  4
 			// block_prefix_sum          :   |     0     |     4     |      7       |       12
@@ -265,10 +264,8 @@ namespace BVH {
 
 			thread_barrier.arrive_and_wait();
 
-			if(thread_id == 0) {
-				cv.notify_one();
-				done = true;
-			}
+			cv.notify_one();
+			done = true;
 		};
 
 		std::mutex m;
