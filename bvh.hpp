@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <numeric>
 #include <vector>
+#include <queue>
 #include <memory>
 #include <thread>
 #include <barrier>
@@ -87,8 +88,8 @@ namespace BVH {
 						std::max(box1.max[2], box2.max[2]));
 		}
 
-		static BVH::AABB for_triangle(Triangle t) {
-			BVH::AABB box;
+		static AABB for_triangle(Triangle t) {
+			AABB box;
 
 			box.min[0] = std::min(std::min(t.p1.x, t.p2.x), t.p3.x);
 			box.min[1] = std::min(std::min(t.p1.y, t.p2.y), t.p3.y);
@@ -112,15 +113,40 @@ namespace BVH {
 		}
 	};
 
+	struct PackedNode {
+		// NOTE(stekap): u32 is a bit of overkill for the triangle count. Later, we could, in theory, separate it to counts
+		//               for different primitives. At the same time we would need to change the interpretation for children_index.
+		//               For example, if triangle_count is 0, then the children_index as a whole is an index into the node array,
+		//               but if it is not 0, then we look at the lower portion of children_index for sphere array index and at higher
+		//               for triangle array index (precise number of bits would depent on the frequency of there primitives).
+		AABB aabb;
+		// This contains the start index of the two node children if the node is internal, or an index of a triangle.
+		// Later, if we decide to merge some of the leaf nodes, so that one leaf node can contain multiple triangles,
+		// we would need to reorder the triangle array such that those triangles that belong to the same leaf are places
+		// contiguously within an array.
+		u32 children_index;
+		// If the triangle_count is zero, then the node is internal and the children_index references tree nodes.
+		// If the triangle_count is not zero, then the node is a leaf and the children_index references triangles array.
+		u32 triangle_count;
+	};
+
 	struct Node {
 		AABB aabb;
 		std::unique_ptr<Node> left_child;
 		std::unique_ptr<Node> right_child;
-		s32 triangle_index;
+		s64 triangle_index;
 
 		Node() {}
-		Node(const AABB& aabb, std::unique_ptr<Node> left_child, std::unique_ptr<Node> right_child, s32 triangle_index = -1)
-			: aabb(aabb), left_child(std::move(left_child)), right_child(std::move(right_child)), triangle_index(triangle_index) {}
+		Node(const AABB& aabb, std::unique_ptr<Node> _left_child, std::unique_ptr<Node> _right_child, s64 triangle_index = -1)
+			: aabb(aabb), left_child(std::move(_left_child)), right_child(std::move(_right_child)), triangle_index(triangle_index) {}
+	};
+
+	struct Tree {
+		std::unique_ptr<Node> root;
+		u32 node_count;
+
+		Tree() {}
+		Tree(std::unique_ptr<Node> _root, u32 node_count) : root(std::move(_root)), node_count(node_count) {}
 	};
 
 	std::vector<Triangle> load_test_obj(std::string obj_file) {
@@ -146,10 +172,10 @@ namespace BVH {
 			nodes[i].aabb = AABB::for_triangle(triangles[i]);
 			nodes[i].left_child = nullptr;
 			nodes[i].right_child = nullptr;
-			nodes[i].triangle_index = (s32)i;
+			nodes[i].triangle_index = (s64)i;
 
 			V3 centroid = triangles[i].centroid();
-			morton_codes[i] = BVH::Morton::encode((u64)(centroid.x - left_bound),
+			morton_codes[i] = Morton::encode((u64)(centroid.x - left_bound),
 												  (u64)(centroid.y - left_bound),
 												  (u64)(centroid.z - left_bound), 4);
 		}
@@ -171,9 +197,12 @@ namespace BVH {
 		return sorted_input;
 	}
 
-	std::unique_ptr<Node> construct(std::vector<Triangle>& triangles, int radius, int thread_count) {
+	Tree construct(std::vector<Triangle>& triangles, int radius, int thread_count) {
 		std::vector<std::unique_ptr<Node>> in = generate_sorted_input(triangles);
 		std::vector<std::unique_ptr<Node>> out(in.size());
+
+		std::vector<u32> bvh_node_count(thread_count);
+		bvh_node_count[0] = (u32)in.size();
 
 		std::vector<std::thread> threads(thread_count);
 		std::barrier thread_barrier(thread_count);
@@ -187,7 +216,7 @@ namespace BVH {
 		std::condition_variable cv;
 		bool done = false;
 
-		auto thread_work = [&current_cluster_count, &in, &out, &neighbors, &prefix_sum, &block_prefix_sum, &thread_barrier, &radius, &cv, &done] (int thread_id, int thread_count) {
+		auto thread_work = [&current_cluster_count, &bvh_node_count, &in, &out, &neighbors, &prefix_sum, &block_prefix_sum, &thread_barrier, &radius, &cv, &done] (int thread_id, int thread_count) {
 			done = false;
 
 			int clusters_per_thread = current_cluster_count / thread_count;
@@ -217,6 +246,7 @@ namespace BVH {
 			for(int i = start_index; i < start_index + clusters_per_thread; ++i) {
 				if(neighbors[neighbors[i]] == i && i < neighbors[i]) {
 					in[i] = std::make_unique<Node>(AABB::unionize(in[i]->aabb, in[neighbors[i]]->aabb), std::move(in[i]), std::move(in[neighbors[i]]), -1);
+					++bvh_node_count[thread_id];
 				}
 			}
 
@@ -286,35 +316,97 @@ namespace BVH {
 			std::swap(in, out);
 		}
 
-		return std::move(in[0]);
+		u32 total_node_count = bvh_node_count[0] + bvh_node_count[1] + bvh_node_count[2] + bvh_node_count[3];
+
+		return Tree(std::move(in[0]), total_node_count);
+	}
+
+	std::vector<PackedNode> pack(Tree& bvh) {
+		std::vector<PackedNode> packed(bvh.node_count);
+
+		u32 current_packed_count = 0;
+		u32 current_reserved_count = 1;
+
+		PackedNode packed_node;
+
+		std::queue<Node*> q;
+		q.push(bvh.root.get());
+
+		Node* node;
+		while(!q.empty()) {
+			node = q.front();
+			q.pop();
+
+			packed_node.aabb = node->aabb;
+			packed_node.children_index = current_reserved_count;
+
+			if(node->triangle_index != -1) {
+				packed_node.triangle_count = 1;
+				packed_node.children_index = (u32)node->triangle_index;
+			}
+			else {
+				packed_node.triangle_count = 0;
+				packed_node.children_index = current_reserved_count;
+
+				current_reserved_count += (node->left_child != nullptr);
+				current_reserved_count += (node->right_child != nullptr);
+			}
+
+			packed[current_packed_count++] = packed_node;
+
+			if(node->left_child != nullptr) {
+				q.push(node->left_child.get());
+			}
+
+			if(node->right_child != nullptr) {
+				q.push(node->right_child.get());
+			}
+		}
+
+		return packed;
 	}
 
 	namespace Test {
-		void print_structure(const std::unique_ptr<Node>& bvh, std::string prefix = "") {
-			if(bvh != nullptr) {
-				if(bvh->triangle_index != -1) {
-					std::cout << prefix << bvh->triangle_index << std::endl;
+		void print_structure(const std::unique_ptr<Node>& root, std::string prefix = "") {
+			if(root != nullptr) {
+				if(root->triangle_index != -1) {
+					std::cout << prefix << root->triangle_index << std::endl;
 				}
 				else {
 					std::cout << prefix << "O" << std::endl;
 				}
-				print_structure(bvh->right_child, prefix + "\t");
-				print_structure(bvh->left_child, prefix + "\t");
+				print_structure(root->right_child, prefix + "\t");
+				print_structure(root->left_child, prefix + "\t");
 			}
 		}
 
-		void count_leaves(const std::unique_ptr<Node>& bvh, int& count) {
-			if(bvh != nullptr) {
-				if(bvh->triangle_index != -1) ++count;
-				count_leaves(bvh->left_child, count);
-				count_leaves(bvh->right_child, count);
+		void count_leaves(const std::unique_ptr<Node>& root, int& count) {
+			if(root != nullptr) {
+				if(root->triangle_index != -1) ++count;
+				count_leaves(root->left_child, count);
+				count_leaves(root->right_child, count);
 			}
 		}
 
-		void print_leaf_count(const std::unique_ptr<Node>& bvh) {
+		void print_leaf_count(const std::unique_ptr<Node>& root) {
 			int count = 0;
-			count_leaves(bvh, count);
+			count_leaves(root, count);
 			std::cout << "Leaf count: " << count << std::endl;
+		}
+
+		void print_packed(std::vector<PackedNode>& packed_bvh) {
+			for(int i = 0; i < packed_bvh.size(); ++i) {
+				std::cout << i << " | ";
+				std::cout << "triangle_count: " << packed_bvh[i].triangle_count << ", children_index: ";
+				if(packed_bvh[i].triangle_count == 1) {
+					std::cout << "(" << packed_bvh[i].children_index << ") ";
+				}
+				else {
+					std::cout << packed_bvh[i].children_index << " ";
+				}
+				std::cout << std::endl;
+
+			}
 		}
 	}
 };

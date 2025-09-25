@@ -17,10 +17,13 @@
 
 int main() {
 	std::vector<Triangle> triangles = BVH::load_test_obj("models/icosahedron.obj");
-	std::unique_ptr<BVH::Node> bvh = BVH::construct(triangles, 5, std::thread::hardware_concurrency());
+	BVH::Tree bvh = BVH::construct(triangles, 5, std::thread::hardware_concurrency());
+	std::vector<BVH::PackedNode> packed_bvh = BVH::pack(bvh);
 
-	BVH::Test::print_leaf_count(bvh);
-	BVH::Test::print_structure(bvh, "");
+	BVH::Test::print_packed(packed_bvh);
+	BVH::Test::print_leaf_count(bvh.root);
+	BVH::Test::print_structure(bvh.root, "");
+
 	return 0;
 
 	Window::create(400, 400);
