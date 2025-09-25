@@ -5,10 +5,12 @@
 
 #define BIAS               0.0001
 #define MAX_FLOAT          3.40282347e+38f
+#define PI                 3.14159265358979323846
+
 #define MAX_SPHERE_COUNT   32
 #define MAX_MATERIAL_COUNT 32
 #define MAX_TRIANGLE_COUNT 64
-#define PI                 3.14159265358979323846
+#define MAX_BVH_NODE_COUNT 65536
 
 struct Sphere {
 	vec3 p;
@@ -32,6 +34,33 @@ struct Triangle {
 vec3 triangle_normal(in Triangle t) {
 	return normalize(cross(t.p2 - t.p1, t.p3 - t.p1));
 }
+
+struct Material {
+	vec3 albedo;
+	float scatter_or_ior;
+	vec3 emittance;
+	unsigned int type;
+};
+
+#define MATERIAL_TYPE_NONE       0
+#define MATERIAL_TYPE_BLACKBODY  1
+#define MATERIAL_TYPE_DIFFUSE    2
+#define MATERIAL_TYPE_SPECULAR   3
+#define MATERIAL_TYPE_DIELECTRIC 4
+
+struct PackedNode {
+	// NOTE(stekap): We don't have explicit AABB type in shader that would contain 6 floats, because that would cause
+	//               the GLSL to pad that structure to size 32. We don't want that, since that place will be filled
+	//               with children_index and triangle_count.
+	float min0;
+	float min1;
+	float min2;
+	float max0;
+	float max1;
+	float max2;
+	unsigned int children_index;
+	unsigned int triangle_count;
+};
 
 struct Camera {
 	vec3 p;
@@ -63,19 +92,6 @@ bool ray_invalid(Ray ray) {
 void ray_invalidate(inout Ray ray) {
 	ray.d = vec3(0.0, 0.0, 0.0);
 }
-
-struct Material {
-	vec3 albedo;
-	float scatter_or_ior;
-	vec3 emittance;
-	unsigned int type;
-};
-
-#define MATERIAL_TYPE_NONE       0
-#define MATERIAL_TYPE_BLACKBODY  1
-#define MATERIAL_TYPE_DIFFUSE    2
-#define MATERIAL_TYPE_SPECULAR   3
-#define MATERIAL_TYPE_DIELECTRIC 4
 
 in vec3 position;
 layout (pixel_center_integer) in vec4 gl_FragCoord;
@@ -182,6 +198,10 @@ layout (std140, binding = 1) uniform Triangles {
 
 layout (std140, binding = 2) uniform Materials {
 	Material materials[MAX_MATERIAL_COUNT];
+};
+
+layout (std140, binding = 3) uniform BVH {
+	PackedNode bvh[MAX_BVH_NODE_COUNT];
 };
 
 // NOTE(stekap): LFSR_Rand_Gen is from: https://www.geeks3d.com/20100831/shader-library-noise-and-pseudo-random-number-generator-in-glsl/
@@ -496,6 +516,26 @@ void direct_light_sample(inout Ray next_ray) {
 	next_ray.color += next_ray.attenuation * materials[triangles[0].mat_index].emittance * light_area * geometry * visibility;
 }
 
+void direct_light_sample_multiple_lights(inout Ray next_ray) {
+	float t = MAX_FLOAT;
+	int triangle_index = -1;
+	int sphere_index = -1;
+
+	unsigned int total_light_count = triangle_light_count + sphere_light_count;
+
+	unsigned int light_index = int(floor(random_in_range(next_ray.p, time, 0, total_light_count)));
+
+	// TODO(stekap): Make the uniform sampling version first, so that it can server as gauge.
+
+	// data for every light:
+	//   power calculation based on the material (should be precalculated for all light so that we can have a predefined PDF)
+	//     these values can be stored as a prefix sum
+	//     the way that the light material is used suggests that the emittance values are actually radiance,
+	//     therefore, we could approximate the light's power by integrating L*projected_area*spatial_angle
+	//   center and radius so that we can send a random ray within the cone
+	//   light area (can be precalculated and stored)
+}
+
 bool update_ray(inout Ray ray, in Material material, in unsigned int mat_index, in vec3 normal, in float t) {
 	if(material.type == MATERIAL_TYPE_BLACKBODY) {
 		ray.color += ray.attenuation * dot(ray.d, ray.n) * material.emittance;
@@ -552,6 +592,7 @@ bool update_ray(inout Ray ray, in Material material, in unsigned int mat_index, 
 //                   direct_light_sample(...);
 //               without 'if', and inside the body of that function, we would simply multiply calculated sample with scatter.
 
+// TODO(stekap): Check if next_ray is even needed, or it is enough to just use ray.
 void main() {
 	float pixel_width = 2.0/width;
 	float pixel_height = 2.0/height;

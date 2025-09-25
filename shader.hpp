@@ -32,10 +32,13 @@ namespace ShaderConfig {
 	Internal constexpr u32 max_sphere_count        = 32;
 	Internal constexpr u32 max_triangle_count      = 64;
 	Internal constexpr u32 max_material_count      = 32;
+	// This is around 2MB when using packed bvh nodes.
+	Internal constexpr u32 max_bvh_node_count      = 65536;
 
 	Internal constexpr u32 spheres_ub_bind_index   = 0;
 	Internal constexpr u32 triangles_ub_bind_index = 1;
 	Internal constexpr u32 materials_ub_bind_index = 2;
+	Internal constexpr u32 bvh_ub_bind_index       = 3;
 
 	Internal constexpr u32 batch_state_bind_index  = 0;
 	Internal constexpr u32 final_colors_bind_index = 1;

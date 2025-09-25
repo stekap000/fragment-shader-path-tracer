@@ -128,6 +128,18 @@ namespace BVH {
 		// If the triangle_count is zero, then the node is internal and the children_index references tree nodes.
 		// If the triangle_count is not zero, then the node is a leaf and the children_index references triangles array.
 		u32 triangle_count;
+
+		void print() {
+			std::cout << "aabb: ";
+			aabb.println();
+			std::cout << "children_index: " << children_index << std::endl;
+			std::cout << "triangle_count: " << triangle_count;
+		}
+
+		void println() {
+			print();
+			std::cout << std::endl;
+		}
 	};
 
 	struct Node {
@@ -139,6 +151,17 @@ namespace BVH {
 		Node() {}
 		Node(const AABB& aabb, std::unique_ptr<Node> _left_child, std::unique_ptr<Node> _right_child, s64 triangle_index = -1)
 			: aabb(aabb), left_child(std::move(_left_child)), right_child(std::move(_right_child)), triangle_index(triangle_index) {}
+
+		void print() {
+			std::cout << "aabb: ";
+			aabb.println();
+			std::cout << "triangle_index: " << triangle_index;
+		}
+
+		void println() {
+			print();
+			std::cout << std::endl;
+		}
 	};
 
 	struct Tree {
@@ -321,7 +344,7 @@ namespace BVH {
 		return Tree(std::move(in[0]), total_node_count);
 	}
 
-	std::vector<PackedNode> pack(Tree& bvh) {
+	std::vector<PackedNode> pack(const Tree& bvh) {
 		std::vector<PackedNode> packed(bvh.node_count);
 
 		u32 current_packed_count = 0;

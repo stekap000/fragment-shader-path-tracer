@@ -14,6 +14,7 @@
 #include "time.hpp"
 #include "scene.hpp"
 #include "window.hpp"
+#include "bvh.hpp"
 
 struct Tracer {
 	Scene scene;
@@ -23,6 +24,7 @@ struct Tracer {
 	u32 spheres_ub;
 	u32 triangles_ub;
 	u32 materials_ub;
+	u32 bvh_ub;
 
 	enum : u32 {
 		EXECUTION_TYPE_INITIALIZE         = 0,
@@ -44,14 +46,17 @@ struct Tracer {
 		spheres_ub   = OpenGL::create_uniform_buffer(ShaderConfig::max_sphere_count   * sizeof(Sphere));
 		triangles_ub = OpenGL::create_uniform_buffer(ShaderConfig::max_triangle_count * sizeof(Triangle));
 		materials_ub = OpenGL::create_uniform_buffer(ShaderConfig::max_material_count * sizeof(Material));
+		bvh_ub       = OpenGL::create_uniform_buffer(ShaderConfig::max_bvh_node_count * sizeof(BVH::PackedNode));
 
-		OpenGL::link_uniform_buffer_to_index(ShaderConfig::spheres_ub_bind_index,   spheres_ub,   ShaderConfig::max_sphere_count*sizeof(Sphere));
-		OpenGL::link_uniform_buffer_to_index(ShaderConfig::triangles_ub_bind_index, triangles_ub, ShaderConfig::max_triangle_count*sizeof(Triangle));
-		OpenGL::link_uniform_buffer_to_index(ShaderConfig::materials_ub_bind_index, materials_ub, ShaderConfig::max_material_count*sizeof(Material));
+		OpenGL::link_uniform_buffer_to_index(ShaderConfig::spheres_ub_bind_index,   spheres_ub,   ShaderConfig::max_sphere_count   * sizeof(Sphere));
+		OpenGL::link_uniform_buffer_to_index(ShaderConfig::triangles_ub_bind_index, triangles_ub, ShaderConfig::max_triangle_count * sizeof(Triangle));
+		OpenGL::link_uniform_buffer_to_index(ShaderConfig::materials_ub_bind_index, materials_ub, ShaderConfig::max_material_count * sizeof(Material));
+		OpenGL::link_uniform_buffer_to_index(ShaderConfig::bvh_ub_bind_index,       bvh_ub,       ShaderConfig::max_bvh_node_count * sizeof(BVH::PackedNode));
 
-		OpenGL::fill_uniform_buffer(spheres_ub,   scene.spheres.size()   * sizeof(Sphere),   scene.spheres.data());
-		OpenGL::fill_uniform_buffer(triangles_ub, scene.triangles.size() * sizeof(Triangle), scene.triangles.data());
-		OpenGL::fill_uniform_buffer(materials_ub, scene.materials.size() * sizeof(Material), scene.materials.data());
+		OpenGL::fill_uniform_buffer(spheres_ub,   scene.spheres.size()   * sizeof(Sphere),          scene.spheres.data());
+		OpenGL::fill_uniform_buffer(triangles_ub, scene.triangles.size() * sizeof(Triangle),        scene.triangles.data());
+		OpenGL::fill_uniform_buffer(materials_ub, scene.materials.size() * sizeof(Material),        scene.materials.data());
+		OpenGL::fill_uniform_buffer(bvh_ub,       scene.bvh.size()       * sizeof(BVH::PackedNode), scene.bvh.data());
 	}
 
 	void initialize_camera() {
@@ -69,6 +74,10 @@ struct Tracer {
 		OpenGL::uniform_u32_x1(program, "sphere_light_count",   (u32)scene.sphere_light_count);
 		OpenGL::uniform_u32_x1(program, "triangle_count",       (u32)scene.triangles.size());
 		OpenGL::uniform_u32_x1(program, "triangle_light_count", (u32)scene.triangle_light_count);
+
+		// NOTE(stekap): Right now, there is no need for material_count uniform in the shader, since we don't iterate on materials.
+		//               Also, there is no need for bvh node count for the same reason.
+		//               Additionally, counts for primitives (like triangle_count) are not needed if we use bvh, but we keep them for now.
 	}
 
 	void run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count, bool debug = false) {

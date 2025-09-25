@@ -6,11 +6,14 @@
 
 #include "shared.hpp"
 #include "shader.hpp"
+#include "bvh.hpp"
 
 struct Scene {
 	std::vector<Sphere> spheres;
 	std::vector<Triangle> triangles;
 	std::vector<Material> materials;
+
+	std::vector<BVH::PackedNode> bvh;
 
 	u32 triangle_light_count;
 	u32 sphere_light_count;
@@ -18,11 +21,11 @@ struct Scene {
 	Scene() {}
 
 	Scene(u32 sphere_count, u32 sphere_light_count, u32 triangle_count, u32 triangle_light_count, u32 material_count) {
-		assert(sphere_count   <= ShaderConfig::max_sphere_count);
-		assert(triangle_count <= ShaderConfig::max_triangle_count);
-		assert(material_count <= ShaderConfig::max_material_count);
+		assert(sphere_count         <= ShaderConfig::max_sphere_count);
+		assert(triangle_count       <= ShaderConfig::max_triangle_count);
+		assert(material_count       <= ShaderConfig::max_material_count);
 		assert(triangle_light_count <= ShaderConfig::max_triangle_count);
-		assert(sphere_light_count <= ShaderConfig::max_sphere_count);
+		assert(sphere_light_count   <= ShaderConfig::max_sphere_count);
 
 		spheres.resize(sphere_count);
 		triangles.resize(triangle_count);
@@ -30,17 +33,21 @@ struct Scene {
 	}
 
 	Scene(std::vector<Sphere>& spheres, u32 sphere_light_count, std::vector<Triangle>& triangles, u32 triangle_light_count, std::vector<Material>& materials) {
-		assert(spheres.size()   <= ShaderConfig::max_sphere_count);
-		assert(triangles.size() <= ShaderConfig::max_triangle_count);
-		assert(materials.size() <= ShaderConfig::max_material_count);
+		assert(spheres.size()       <= ShaderConfig::max_sphere_count);
+		assert(triangles.size()     <= ShaderConfig::max_triangle_count);
+		assert(materials.size()     <= ShaderConfig::max_material_count);
 		assert(triangle_light_count <= ShaderConfig::max_triangle_count);
-		assert(sphere_light_count <= ShaderConfig::max_sphere_count);
+		assert(sphere_light_count   <= ShaderConfig::max_sphere_count);
 
 		this->spheres = spheres;
 		this->triangles = triangles;
 		this->materials = materials;
 		this->triangle_light_count = triangle_light_count;
 		this->sphere_light_count = sphere_light_count;
+	}
+
+	void generate_bvh(int radius, int thread_count) {
+		bvh = BVH::pack(BVH::construct(triangles, radius, thread_count));
 	}
 
 	static Scene test_scene() {
