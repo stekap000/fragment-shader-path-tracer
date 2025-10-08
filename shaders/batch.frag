@@ -52,12 +52,12 @@ struct PackedNode {
 	// NOTE(stekap): We don't have explicit AABB type in shader that would contain 6 floats, because that would cause
 	//               the GLSL to pad that structure to size 32. We don't want that, since that place will be filled
 	//               with children_index and triangle_count.
-	float min0;
-	float min1;
-	float min2;
-	float max0;
-	float max1;
-	float max2;
+	float min_x;
+	float min_y;
+	float min_z;
+	float max_x;
+	float max_y;
+	float max_z;
 	unsigned int children_index;
 	unsigned int triangle_count;
 };
@@ -478,6 +478,41 @@ void intersect_objects(in Ray ray, inout int triangle_index, inout int sphere_in
 	if(t < t_temp) {
 		triangle_index = -1;
 	}
+}
+
+bool intersect_bvh_node(in Ray ray, in unsigned int node_index) {
+	// TODO(stekap): Precalculate inverses to avoid division (after testing with the slower version, in order to gauge the improvement).
+	// TODO(stekap): Minimize comparisons (min/max use), by taking into account that only 3 faces can be hit directly for the given ray direction.
+	// TODO(stekap): NAN float value case not handled (arises when the ray origin is precisely on the boundary of the AABB). Maybe handle later.
+
+	PackedNode node = bvh[node_index];
+
+	float t_close = -MAX_FLOAT;
+	float t_far   =  MAX_FLOAT;
+
+	float t1 = 0;
+	float t2 = 0;
+
+	t1 = (node.min_x - ray.p.x) / ray.d.x;
+	t2 = (node.max_x - ray.p.x) / ray.d.x;
+
+	t_close = max(t_close, min(t1, t2));
+	t_far   = min(t_far,   max(t1, t2));
+
+	t1 = (node.min_y - ray.p.y) / ray.d.y;
+	t2 = (node.max_y - ray.p.y) / ray.d.y;
+
+	t_close = max(t_close, min(t1, t2));
+	t_far   = min(t_far,   max(t1, t2));
+
+	t1 = (node.min_z - ray.p.z) / ray.d.z;
+	t2 = (node.max_z - ray.p.z) / ray.d.z;
+
+	t_close = max(t_close, min(t1, t2));
+	t_far   = min(t_far,   max(t1, t2));
+
+	// <= instead of < so that hit to the corner is included.
+	return t_close <= t_far;
 }
 
 // TODO(stekap):
