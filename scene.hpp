@@ -6,7 +6,9 @@
 
 #include "shared.hpp"
 #include "shader.hpp"
+#include "io.hpp"
 #include "bvh.hpp"
+#include <iostream>
 
 struct Scene {
 	std::vector<Sphere> spheres;
@@ -50,28 +52,41 @@ struct Scene {
 		bvh = BVH::pack(BVH::construct(triangles, radius, thread_count));
 	}
 
-	static Scene test_scene() {
-		std::vector<Sphere> spheres = {
-			Sphere({0.0f, 0.0f, -2.0f}, 1.0f, 0),
-			Sphere({0.0f, -1000.0f, -2.0f}, 1000.0f, 1),
-			Sphere({-2.0f, 2.0f, -4.0f}, 2.0f, 2),
-			Sphere({-0.5f, 2.5f, -1.0f}, 0.4f, 3),
-		};
+	static Scene cornell_box_with_lots_of_triangles() {
+		std::vector<Sphere> spheres;
+		std::vector<Triangle> triangles;
+		std::vector<Material> materials;
 
-		std::vector<Triangle> triangles = {
-			Triangle({2.0f, 2.0f, -5.0f}, {3.0f, 0.0f, -2.0f}, {2.5f, 3.0f, -3.5f}, 2),
-			Triangle({-1.2f, 0.0f, -2.0f}, {-1.7f, 0.0f, -2.5f}, {-2.0f, 0.0f, -2.0f}, 4),
-		};
+		materials.push_back(Material({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f,   MATERIAL_TYPE_NONE));    // Default material
+		materials.push_back(Material({0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE)); // White
+		materials.push_back(Material({0.8f, 0.2f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // Red
+		materials.push_back(Material({0.2f, 0.8f, 0.2f}, {0.0f, 0.0f, 0.0f}, 0.95f,  MATERIAL_TYPE_DIFFUSE));    // Green
+		materials.push_back(Material({0.6f, 0.6f, 0.2f}, {5.0f, 5.0f, 2.5f}, 0.95f,  MATERIAL_TYPE_BLACKBODY));  // Light
+		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 0.005f, MATERIAL_TYPE_SPECULAR));   // Mirror
+		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 1.4f,   MATERIAL_TYPE_DIELECTRIC)); // Cube Glass
+		materials.push_back(Material({1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 1.8f,   MATERIAL_TYPE_DIELECTRIC)); // Sphere Glass
 
-		std::vector<Material> material = {
-			Material({1.0f, 0.4f, 0.3f}, {0.0, 0.0, 0.0},     0.7f,   MATERIAL_TYPE_DIFFUSE),
-			Material({0.3f, 1.0f, 0.3f}, {0.0, 0.0, 0.0},     0.9f,   MATERIAL_TYPE_DIFFUSE),
-			Material({0.7f, 0.7f, 0.7f}, {0.0, 0.0, 0.0},     0.001f, MATERIAL_TYPE_DIFFUSE),
-			Material({0.8f, 0.8f, 0.8f}, {0.3f, 0.4f, 10.0f}, 0.9f,   MATERIAL_TYPE_BLACKBODY),
-			Material({0.6f, 0.2f, 0.2f}, {2.5f, 0.6f, 0.6f},  0.9f,   MATERIAL_TYPE_BLACKBODY),
-		};
+		place_light(triangles, 4);
 
-		return Scene(spheres, 1, triangles, 1, material);
+		place_back_wall(triangles, 1);
+		place_left_wall(triangles, 2);
+		place_right_wall(triangles, 3);
+		place_floor(triangles, 1);
+		place_ceiling(triangles, 1);
+
+		std::vector<Triangle> model = IO::load_obj("models/hand.obj");
+
+		for(Triangle& t : model) {
+			t.rotate_y(45);
+			t.scale(100);
+			t.translate({250, 140, -200});
+			t.mat_index = 1;
+		}
+
+		triangles.insert(triangles.end(), model.begin(), model.end());
+		std::cout << triangles.size() << std::endl;
+
+		return Scene(spheres, 0, triangles, 2, materials);
 	}
 
 	static Scene cornell_box() {

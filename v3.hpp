@@ -1,6 +1,8 @@
 #ifndef V3_HPP
 #define V3_HPP
 
+#include <cmath>
+
 #include "shared.hpp"
 
 struct V3 {
@@ -40,6 +42,17 @@ struct V3 {
 		y /= f;
 		z /= f;
 		return *this;
+	}
+
+	inline void rotate_y(const f32 deg) {
+		#define PI 3.14159265358979323846
+
+		f32 rad = (f32)PI*deg/180.0f;
+
+		x = std::cos(rad)*x + std::sin(rad)*z;
+		z = -std::sin(rad)*x + std::cos(rad)*z;
+
+		#undef PI
 	}
 };
 

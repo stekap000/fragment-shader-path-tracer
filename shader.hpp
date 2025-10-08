@@ -30,7 +30,7 @@ enum : u32 {
 
 namespace ShaderConfig {
 	Internal constexpr u32 max_sphere_count        = 32;
-	Internal constexpr u32 max_triangle_count      = 64;
+	Internal constexpr u32 max_triangle_count      = 16384;
 	Internal constexpr u32 max_material_count      = 32;
 	// This is around 2MB when using packed bvh nodes.
 	Internal constexpr u32 max_bvh_node_count      = 65536;
@@ -84,10 +84,26 @@ struct Triangle {
 	Triangle(V3 p1, V3 p2, V3 p3, u32 mat_index)
 		: p1(p1), p2(p2), p3(p3), mat_index(mat_index) {}
 
-	inline void translate(V3& translation_vector) {
+	inline void translate(const V3& translation_vector) {
 		p1 += translation_vector;
 		p2 += translation_vector;
 		p3 += translation_vector;
+	}
+
+	inline void scale(const f32 f) {
+		p1 *= f;
+		p2 *= f;
+		p3 *= f;
+	}
+
+	inline void rotate_y(const f32 deg) {
+		#define PI 3.14159265358979323846
+
+		p1.rotate_y(deg);
+		p2.rotate_y(deg);
+		p3.rotate_y(deg);
+
+		#undef PI
 	}
 
 	V3 centroid() const {

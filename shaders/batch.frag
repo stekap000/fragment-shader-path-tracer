@@ -8,7 +8,7 @@
 #define PI                 3.14159265358979323846
 
 #define MAX_SPHERE_COUNT   32
-#define MAX_MATERIAL_COUNT 32
+#define MAX_MATERIAL_COUNT 16384
 #define MAX_TRIANGLE_COUNT 64
 #define MAX_BVH_NODE_COUNT 65536
 
@@ -577,7 +577,7 @@ void intersect_objects_bvh(in Ray ray, inout int triangle_index, inout int spher
 	}
 }
 
-#define USE_BVH false
+#define USE_BVH true
 void intersect_objects(in Ray ray, inout int triangle_index, inout int sphere_index, inout float t) {
 	if(USE_BVH) {
 		intersect_objects_bvh(ray, triangle_index, sphere_index, t);

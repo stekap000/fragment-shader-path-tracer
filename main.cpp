@@ -23,7 +23,8 @@ int main() {
 	u32 ray_jump_count   = 32;
 	u32 batch_jump_count = 32;
 
-	Scene scene = Scene::cornell_box();
+	// Scene scene = Scene::cornell_box();
+	Scene scene = Scene::cornell_box_with_lots_of_triangles();
 	scene.generate_bvh(5, std::thread::hardware_concurrency());
 
 	Camera camera = Camera::cornell_box();
