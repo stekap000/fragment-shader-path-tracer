@@ -2,7 +2,6 @@
 #include "glfw/glfw3.h"
 
 #include <iostream>
-#include <memory>
 
 #include "shared.hpp"
 #include "window.hpp"
@@ -15,27 +14,22 @@
 // NOTE(stekap): We don't bother with resources cleanup like allocated textures or whatever
 //               since the program just generates the image and exits so the OS will do the cleanup.
 
+// TODO(stekap): Revisit BVH construction and modify min and max to be robust (based on T. Ize).
+//               Also, see if there is a need to add some padding for the AABB.
 int main() {
-	std::vector<Triangle> triangles = BVH::load_test_obj("models/icosahedron.obj");
-	BVH::Tree bvh = BVH::construct(triangles, 5, std::thread::hardware_concurrency());
-	std::vector<BVH::PackedNode> packed_bvh = BVH::pack(bvh);
-
-	BVH::Test::print_packed(packed_bvh);
-	BVH::Test::print_leaf_count(bvh.root);
-	BVH::Test::print_structure(bvh.root, "");
-
-	return 0;
-
 	Window::create(400, 400);
 
-	u32 ray_count        = 512;
+	u32 ray_count        = 256;
 	u32 ray_jump_count   = 32;
 	u32 batch_jump_count = 32;
 
-	Tracer tracer(Scene::cornell_box(),
-				  Camera::cornell_box(),
-				  OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag"));
+	Scene scene = Scene::cornell_box();
+	scene.generate_bvh(5, std::thread::hardware_concurrency());
 
+	Camera camera = Camera::cornell_box();
+	u32 program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
+
+	Tracer tracer(scene, camera, program);
 	tracer.run(ray_count, ray_jump_count, batch_jump_count);
 
 	return 0;

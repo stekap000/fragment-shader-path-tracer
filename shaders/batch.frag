@@ -310,6 +310,40 @@ void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
 	}
 }
 
+float intersect_triangle(in Ray ray, in Triangle triangle) {
+	float t = MAX_FLOAT;
+
+	vec3 E1 = triangle.p2 - triangle.p1;
+	vec3 E2 = triangle.p3 - triangle.p1;
+
+	vec3 P = cross(ray.d, E2);
+	float det = dot(P, E1);
+
+	// Hit on the front side of any triangle, or on the back side of the dielectric.
+	if(det >= BIAS || (det <= -BIAS && materials[triangle.mat_index].type == MATERIAL_TYPE_DIELECTRIC)) {
+		float inv_det = 1.0/det;
+		vec3 T = ray.p - triangle.p1;
+
+		float u = inv_det * dot(P, T);
+
+		if(u >= 0 && u <= 1) {
+			vec3 Q = cross(T, E1);
+			float v = inv_det * dot(Q, ray.d);
+
+			if(v >= 0 && v <= 1) {
+				if(u + v <= 1) {
+					float temp_t = inv_det * dot(Q, E2);
+					if(temp_t > 0 && temp_t < t) {
+						t = temp_t;
+					}
+				}
+			}
+		}
+	}
+
+	return t;
+}
+
 // NOTE(stekap): This function assumes that the triangle points order matches the normal
 //               via right hand rule.
 void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
@@ -471,7 +505,7 @@ void update_next_ray_dielectric(in Ray ray, inout Ray next_ray, in Material mate
 }
 
 // TODO(stekap): This is just temporary intersection. Later, it must be optimized with BVH.
-void intersect_objects(in Ray ray, inout int triangle_index, inout int sphere_index, inout float t) {
+void intersect_objects_flat(in Ray ray, inout int triangle_index, inout int sphere_index, inout float t) {
 	intersect_triangles(ray, triangle_index, t);
 	float t_temp = t;
 	intersect_spheres(ray, sphere_index, t);
@@ -480,12 +514,10 @@ void intersect_objects(in Ray ray, inout int triangle_index, inout int sphere_in
 	}
 }
 
-bool intersect_bvh_node(in Ray ray, in unsigned int node_index) {
+bool intersect_bvh_node(in Ray ray, in PackedNode node) {
 	// TODO(stekap): Precalculate inverses to avoid division (after testing with the slower version, in order to gauge the improvement).
 	// TODO(stekap): Minimize comparisons (min/max use), by taking into account that only 3 faces can be hit directly for the given ray direction.
 	// TODO(stekap): NAN float value case not handled (arises when the ray origin is precisely on the boundary of the AABB). Maybe handle later.
-
-	PackedNode node = bvh[node_index];
 
 	float t_close = -MAX_FLOAT;
 	float t_far   =  MAX_FLOAT;
@@ -513,6 +545,46 @@ bool intersect_bvh_node(in Ray ray, in unsigned int node_index) {
 
 	// <= instead of < so that hit to the corner is included.
 	return t_close <= t_far;
+}
+
+void intersect_objects_bvh(in Ray ray, inout int triangle_index, inout int sphere_index, inout float t) {
+	// TODO(stekap): Later move stack size definition to the top (we can metaprogram it into shader based on the main program information about the shader).
+	#define MAX_STACK_SIZE 128
+
+	unsigned int stack[MAX_STACK_SIZE];
+	unsigned int top = 0;
+	stack[top++] = 0;
+
+	while(top != 0) {
+		PackedNode node = bvh[stack[--top]];
+
+		bool node_hit = intersect_bvh_node(ray, node);
+
+		if(node_hit) {
+			if(node.triangle_count > 0) {
+				// NOTE(stekap): We only need to test for one triangle for now, since the leaves only have one (will probably change).
+				float temp = intersect_triangle(ray, triangles[node.children_index]);
+				if(temp < t) {
+					t = temp;
+					triangle_index = int(node.children_index);
+				}
+			}
+			else {
+				stack[top++] = node.children_index;
+				stack[top++] = node.children_index + 1;
+			}
+		}
+	}
+}
+
+#define USE_BVH false
+void intersect_objects(in Ray ray, inout int triangle_index, inout int sphere_index, inout float t) {
+	if(USE_BVH) {
+		intersect_objects_bvh(ray, triangle_index, sphere_index, t);
+	}
+	else {
+		intersect_objects_flat(ray, triangle_index, sphere_index, t);
+	}
 }
 
 // TODO(stekap):

@@ -199,8 +199,8 @@ namespace BVH {
 
 			V3 centroid = triangles[i].centroid();
 			morton_codes[i] = Morton::encode((u64)(centroid.x - left_bound),
-												  (u64)(centroid.y - left_bound),
-												  (u64)(centroid.z - left_bound), 4);
+											 (u64)(centroid.y - left_bound),
+											 (u64)(centroid.z - left_bound), 4);
 		}
 
 		// TODO(stekap): Do custom radix sort here.
