@@ -167,9 +167,11 @@ namespace BVH {
 	struct Tree {
 		std::unique_ptr<Node> root;
 		u32 node_count;
+		u32 radius;
+		u32 max_depth;
 
 		Tree() {}
-		Tree(std::unique_ptr<Node> _root, u32 node_count) : root(std::move(_root)), node_count(node_count) {}
+		Tree(std::unique_ptr<Node> _root, u32 node_count, u32 radius, u32 max_depth) : root(std::move(_root)), node_count(node_count), radius(radius), max_depth(max_depth) {}
 	};
 
 	std::vector<Triangle> load_test_obj(std::string obj_file) {
@@ -321,6 +323,7 @@ namespace BVH {
 			done = true;
 		};
 
+		u32 max_depth = 1;
 		std::mutex m;
 		std::unique_lock<std::mutex> lock(m);
 		while(current_cluster_count > 1) {
@@ -337,11 +340,13 @@ namespace BVH {
 			current_cluster_count = prefix_sum[current_cluster_count];
 
 			std::swap(in, out);
+
+			++max_depth;
 		}
 
 		u32 total_node_count = bvh_node_count[0] + bvh_node_count[1] + bvh_node_count[2] + bvh_node_count[3];
 
-		return Tree(std::move(in[0]), total_node_count);
+		return Tree(std::move(in[0]), total_node_count, radius, max_depth);
 	}
 
 	std::vector<PackedNode> pack(const Tree& bvh) {

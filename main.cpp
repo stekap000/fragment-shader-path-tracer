@@ -25,7 +25,7 @@ int main() {
 
 	// Scene scene = Scene::cornell_box();
 	Scene scene = Scene::cornell_box_with_lots_of_triangles();
-	scene.generate_bvh(5, std::thread::hardware_concurrency());
+	scene.generate_bvh(32, std::thread::hardware_concurrency());
 
 	Camera camera = Camera::cornell_box();
 	u32 program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");

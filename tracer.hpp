@@ -83,7 +83,10 @@ struct Tracer {
 	void run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count, bool debug = false) {
 		u32 batch_count = (ray_jump_count / batch_jump_count);
 
-		if(!debug) Log::batching_configuration(ray_count, batch_count, ray_jump_count, batch_jump_count);
+		if(!debug) {
+			Log::scene_data(scene);
+			Log::batching_configuration(ray_count, batch_count, ray_jump_count, batch_jump_count);
+		}
 
 		s32 execution_type_uniform_location = OpenGL::locate_uniform(program, "execution_type");
 		s32 time_uniform_location           = OpenGL::locate_uniform(program, "time");

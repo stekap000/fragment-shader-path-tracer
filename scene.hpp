@@ -8,7 +8,6 @@
 #include "shader.hpp"
 #include "io.hpp"
 #include "bvh.hpp"
-#include <iostream>
 
 struct Scene {
 	std::vector<Sphere> spheres;
@@ -84,7 +83,6 @@ struct Scene {
 		}
 
 		triangles.insert(triangles.end(), model.begin(), model.end());
-		std::cout << triangles.size() << std::endl;
 
 		return Scene(spheres, 0, triangles, 2, materials);
 	}
