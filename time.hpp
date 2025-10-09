@@ -3,6 +3,7 @@
 
 #include "glfw/glfw3.h"
 #include "shared.hpp"
+#include "window.hpp"
 
 namespace Time {
 	struct Standard {
@@ -23,7 +24,21 @@ namespace Time {
 		}
 	};
 
-	double now() {
+	struct Measurements {
+		f64 total;
+		f64 average_per_ray;
+		f64 average_per_pixel;
+		f64 average_per_batch;
+
+		void update(f64 total_time, u32 ray_count, u32 batch_count) {
+			total             = total_time;
+			average_per_ray   = total_time / (ray_count*Window::width*Window::height);
+			average_per_pixel = total_time / (Window::width*Window::height);
+			average_per_batch = total_time / batch_count;
+		}
+	};
+
+	f64 now() {
 		return glfwGetTime();
 	}
 };

@@ -80,7 +80,9 @@ struct Tracer {
 		//               Additionally, counts for primitives (like triangle_count) are not needed if we use bvh, but we keep them for now.
 	}
 
-	void run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count, bool debug = false) {
+	Time::Measurements run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count, bool debug = false) {
+		Time::Measurements time_measurements;
+
 		u32 batch_count = (ray_jump_count / batch_jump_count);
 
 		if(!debug) {
@@ -100,11 +102,11 @@ struct Tracer {
 		__ignore__(final_colors_texture);
 
 		u32 jumps_done = 0;
-		double time_start = Time::now();
-		double ray_time_start;
-		double total_ray_time = 0;
-		double percent_done = 0;
-		double estimated_wait = 0;
+		f64 time_start = Time::now();
+		f64 ray_time_start;
+		f64 total_ray_time = 0;
+		f64 percent_done = 0;
+		f64 estimated_wait = 0;
 		for(u32 ray_index = 0; ray_index < ray_count; ++ray_index) {
 			ray_time_start = Time::now();
 
@@ -131,15 +133,19 @@ struct Tracer {
 			}
 		}
 
-		double total_time = Time::now() - time_start;
+		f64 total_time = Time::now() - time_start;
 
 		if(!debug) {
+			time_measurements.update(total_time, ray_count, batch_count);
+
 			std::cout << std::endl;
-			Log::measured_timings(total_time, ray_count, batch_count);
+			Log::measured_timings(time_measurements);
 
 			OpenGL::dispatch_batch(execution_type_uniform_location, EXECUTION_TYPE_CONVERT_TO_SRGB);
 			IO::save_final_output("generated_image.png");
 		}
+
+		return time_measurements;
 	}
 
 	void debug(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count) {
