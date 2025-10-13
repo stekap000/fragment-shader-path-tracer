@@ -45,12 +45,13 @@ struct V3 {
 	}
 
 	inline void rotate_y(const f32 deg) {
-		#define PI 3.14159265358979323846
+        #define PI 3.14159265358979323846
 
 		f32 rad = (f32)PI*deg/180.0f;
 
-		x = std::cos(rad)*x + std::sin(rad)*z;
-		z = -std::sin(rad)*x + std::cos(rad)*z;
+		f32 temp = x;
+		x = std::cos(rad)*temp + std::sin(rad)*z;
+		z = -std::sin(rad)*temp + std::cos(rad)*z;
 
 		#undef PI
 	}
