@@ -13,8 +13,6 @@
 #define MAX_BVH_NODE_COUNT 65536
 #define MAX_BVH_STACK_SIZE 128
 
-#define USE_BVH true
-
 struct Sphere {
 	vec3 p;
 	float r;
@@ -106,6 +104,7 @@ out vec4 fragment_color;
 #define EXECUTION_TYPE_INCLUDE_RAY_COLOR 2
 #define EXECUTION_TYPE_CONVERT_TO_SRGB   3
 
+uniform unsigned int use_bvh;
 uniform unsigned int execution_type;
 // NOTE(stekap): This is here to allow us to properly scale image in real time during generation.
 uniform unsigned int processed_ray_count;
@@ -580,7 +579,7 @@ void intersect_objects_bvh(in Ray ray, inout int triangle_index, inout int spher
 }
 
 void intersect_objects(in Ray ray, inout int triangle_index, inout int sphere_index, inout float t) {
-	if(USE_BVH) {
+	if(use_bvh) {
 		intersect_objects_bvh(ray, triangle_index, sphere_index, t);
 	}
 	else {

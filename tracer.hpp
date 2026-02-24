@@ -80,7 +80,7 @@ struct Tracer {
 		//               Additionally, counts for primitives (like triangle_count) are not needed if we use bvh, but we keep them for now.
 	}
 
-	Time::Measurements run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count, bool debug = false) {
+	Time::Measurements run(u32 ray_count, u32 ray_jump_count, u32 batch_jump_count, bool use_bvh, bool debug = false) {
 		Time::Measurements time_measurements;
 
 		u32 batch_count = (ray_jump_count / batch_jump_count);
@@ -93,6 +93,7 @@ struct Tracer {
 		s32 execution_type_uniform_location = OpenGL::locate_uniform(program, "execution_type");
 		s32 time_uniform_location           = OpenGL::locate_uniform(program, "time");
 
+		OpenGL::uniform_u32_x1(program, "use_bvh", (u32)use_bvh);
 		OpenGL::uniform_u32_x1(program, "ray_count", ray_count);
 		OpenGL::uniform_u32_x1(program, "batch_jump_count", batch_jump_count);
 
