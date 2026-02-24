@@ -1,7 +1,9 @@
 #ifndef TIME_HPP
 #define TIME_HPP
 
+#include "glad/glad.h"
 #include "glfw/glfw3.h"
+
 #include "shared.hpp"
 #include "window.hpp"
 

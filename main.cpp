@@ -23,15 +23,18 @@ int main() {
 	u32 ray_jump_count   = 32;
 	u32 batch_jump_count = 32;
 
-	// Scene scene = Scene::cornell_box();
-	Scene scene = Scene::cornell_box_with_lots_of_triangles();
+	Scene scene = Scene::cornell_box();
+	// Scene scene = Scene::cornell_box_with_lots_of_triangles();
+	// Scene scene = Scene::cornell_box_glass();
+
+    // NOTE(stekap): Currently, BVH only handles scenes that contain just triangles.
 	scene.generate_bvh(32, std::thread::hardware_concurrency());
 
 	Camera camera = Camera::cornell_box();
 	u32 program = OpenGL::create_shader_program("shaders/batch.vert", "shaders/batch.frag");
 
 	Tracer tracer(scene, camera, program);
-	tracer.run(ray_count, ray_jump_count, batch_jump_count);
+	Time::Measurements time_measurements = tracer.run(ray_count, ray_jump_count, batch_jump_count);
 
 	return 0;
 }

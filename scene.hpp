@@ -51,7 +51,7 @@ struct Scene {
 		bvh = BVH::pack(BVH::construct(triangles, radius, thread_count));
 	}
 
-	static Scene cornell_box_with_lots_of_triangles() {
+	static Scene cornell_box_base() {
 		std::vector<Sphere> spheres;
 		std::vector<Triangle> triangles;
 		std::vector<Material> materials;
@@ -73,18 +73,41 @@ struct Scene {
 		place_floor(triangles, 1);
 		place_ceiling(triangles, 1);
 
+		return Scene(spheres, 0, triangles, 2, materials);
+	}
+
+	static Scene cornell_box_glass() {
+		Scene scene = cornell_box_base();
+
+		std::vector<Triangle> model = IO::load_obj("models/glass.obj");
+
+		for(Triangle& t : model) {
+			// t.rotate_y(45);
+			// t.scale(100);
+			t.translate({300, 10.0f, -150});
+			t.mat_index = 7;
+		}
+
+		scene.triangles.insert(scene.triangles.end(), model.begin(), model.end());
+
+		return scene;
+	}
+
+	static Scene cornell_box_with_lots_of_triangles() {
+		Scene scene = cornell_box_base();
+
 		std::vector<Triangle> model = IO::load_obj("models/hand.obj");
 
 		for(Triangle& t : model) {
 			t.rotate_y(45);
-			t.scale(100);
+			t.scale(80);
 			t.translate({250, 140, -200});
 			t.mat_index = 1;
 		}
 
-		triangles.insert(triangles.end(), model.begin(), model.end());
+		scene.triangles.insert(scene.triangles.end(), model.begin(), model.end());
 
-		return Scene(spheres, 0, triangles, 2, materials);
+		return scene;
 	}
 
 	static Scene cornell_box() {

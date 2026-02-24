@@ -1,6 +1,6 @@
 #version 420 core
 
-// NOTE(stekap): Caution when ordering data in uniform buffer because of shader alignment
+// NOTE(stekap): Caution when ordering the data in the uniform buffer because of the shader alignment of
 //               struct members and the whole struct itself.
 
 #define BIAS               0.0001
@@ -11,6 +11,9 @@
 #define MAX_MATERIAL_COUNT 16384
 #define MAX_TRIANGLE_COUNT 64
 #define MAX_BVH_NODE_COUNT 65536
+#define MAX_BVH_STACK_SIZE 128
+
+#define USE_BVH true
 
 struct Sphere {
 	vec3 p;
@@ -310,6 +313,7 @@ void intersect_spheres(inout Ray ray, inout int sphere_index, inout float t) {
 	}
 }
 
+// NOTE(stekap): This procedure assumes that the objects are closed surfaces.
 float intersect_triangle(in Ray ray, in Triangle triangle) {
 	float t = MAX_FLOAT;
 
@@ -393,6 +397,7 @@ void intersect_triangles(in Ray ray, inout int triangle_index, inout float t) {
 
 // TODO(stekap): Schlick's approximation if needed.
 // TODO(stekap): Look again carefully at Jacobian refraction term scaling.
+// TODO(stekap): Minimize branching after making sure that refraction calculations are correct.
 void refract_ray(in Ray ray, inout Ray next_ray, in Material material, in vec3 normal) {
 	float refraction_ratio = ray.ior / material.scatter_or_ior;
 	bool inside = dot(ray.d, normal) > 0;
@@ -548,10 +553,7 @@ bool intersect_bvh_node(in Ray ray, in PackedNode node) {
 }
 
 void intersect_objects_bvh(in Ray ray, inout int triangle_index, inout int sphere_index, inout float t) {
-	// TODO(stekap): Later move stack size definition to the top (we can metaprogram it into shader based on the main program information about the shader).
-	#define MAX_STACK_SIZE 128
-
-	unsigned int stack[MAX_STACK_SIZE];
+	unsigned int stack[MAX_BVH_STACK_SIZE];
 	unsigned int top = 0;
 	stack[top++] = 0;
 
@@ -577,7 +579,6 @@ void intersect_objects_bvh(in Ray ray, inout int triangle_index, inout int spher
 	}
 }
 
-#define USE_BVH true
 void intersect_objects(in Ray ray, inout int triangle_index, inout int sphere_index, inout float t) {
 	if(USE_BVH) {
 		intersect_objects_bvh(ray, triangle_index, sphere_index, t);

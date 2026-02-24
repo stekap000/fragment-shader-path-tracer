@@ -130,14 +130,6 @@ struct Camera {
 	Camera() {}
 	Camera(V3 p, V3 x, V3 y, V3 z, float f) : p(p), x(x), y(y), z(z), f(f) {}
 
-	static Camera test_scene() {
-		return Camera({0.0f, 1.0f, 1.0f},
-					  {1.0f, 0.0f, 0.0f},
-					  {0.0f, 1.0f, 0.0f},
-					  {0.0f, 0.0f, 1.0f},
-					  1.0f);
-	}
-
 	static Camera cornell_box() {
 		return Camera({278.0f, 274.0f, 600.0f},
 					  {1.0f, 0.0f, 0.0f},
