@@ -1,7 +1,5 @@
 @echo off
 
-call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
-
 set DEFINES=/DATTACH_CONSOLE /DDEBUG_MODE /D_HAS_EXCEPTIONS=0 /D_CRT_SECURE_NO_WARNINGS
 set DISABLE_SOME_WARNINGS=-wd4505 -wd4702 -wd4100
 
